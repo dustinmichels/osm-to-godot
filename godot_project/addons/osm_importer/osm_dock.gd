@@ -13,6 +13,7 @@ var auto_gen_checkbox: CheckBox
 var colliders_checkbox: CheckBox
 var generate_btn: Button
 var chunking_checkbox: CheckBox
+var csg_checkbox: CheckBox
 var dataset_option: OptionButton
 
 func _init() -> void:
@@ -114,6 +115,11 @@ func _build_ui() -> void:
 	colliders_checkbox.button_pressed = true
 	colliders_checkbox.tooltip_text = "Generate StaticBody3D collision shapes for each building"
 	left_vbox.add_child(colliders_checkbox)
+	csg_checkbox = CheckBox.new()
+	csg_checkbox.text = "Extrude 2D Footprints (CSG)"
+	csg_checkbox.button_pressed = true
+	csg_checkbox.tooltip_text = "Generate buildings as editable 2D CSGPolygon3D footprint extrusions (best for small areas)"
+	left_vbox.add_child(csg_checkbox)
 	chunking_checkbox = CheckBox.new()
 	chunking_checkbox.text = "Spatial Chunking (500m)"
 	chunking_checkbox.button_pressed = false
@@ -193,6 +199,8 @@ func should_create_colliders() -> bool:
 func should_use_spatial_chunks() -> bool:
 	return chunking_checkbox.button_pressed if chunking_checkbox else false
 
+func should_use_csg_buildings() -> bool:
+	return csg_checkbox.button_pressed if csg_checkbox else true
 func get_selected_dataset_path() -> String:
 	if dataset_option == null:
 		return "res://data/osm_export.json"

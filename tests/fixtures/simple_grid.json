@@ -1,0 +1,83 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "generator": "osm-to-godot test fixtures",
+    "timestamp": "2026-10-19T12:00:00.000Z",
+    "source": "overpass",
+    "bbox": {
+      "south": 42.3580,
+      "west": -71.0620,
+      "north": 42.3620,
+      "east": -71.0580
+    },
+    "centroid": {
+      "lat": 42.3600,
+      "lon": -71.0600
+    }
+  },
+  "elements": [
+    {
+      "type": "way",
+      "id": 101,
+      "tags": {
+        "highway": "residential",
+        "name": "North-South Avenue",
+        "lanes": "2",
+        "surface": "asphalt"
+      },
+      "geometry": [
+        { "lat": 42.3590, "lon": -71.0600 },
+        { "lat": 42.3600, "lon": -71.0600 },
+        { "lat": 42.3610, "lon": -71.0600 }
+      ]
+    },
+    {
+      "type": "way",
+      "id": 102,
+      "tags": {
+        "highway": "residential",
+        "name": "East-West Street",
+        "lanes": "2",
+        "surface": "asphalt"
+      },
+      "geometry": [
+        { "lat": 42.3600, "lon": -71.0610 },
+        { "lat": 42.3600, "lon": -71.0600 },
+        { "lat": 42.3600, "lon": -71.0590 }
+      ]
+    },
+    {
+      "type": "way",
+      "id": 201,
+      "tags": {
+        "building": "residential",
+        "building:levels": "2",
+        "building:colour": "#D0C8B8",
+        "roof:colour": "#4A4540"
+      },
+      "geometry": [
+        { "lat": 42.3602, "lon": -71.0608 },
+        { "lat": 42.3608, "lon": -71.0608 },
+        { "lat": 42.3608, "lon": -71.0602 },
+        { "lat": 42.3602, "lon": -71.0602 },
+        { "lat": 42.3602, "lon": -71.0608 }
+      ]
+    },
+    {
+      "type": "way",
+      "id": 202,
+      "tags": {
+        "building": "house",
+        "height": "8.5 m",
+        "building:material": "brick"
+      },
+      "geometry": [
+        { "lat": 42.3602, "lon": -71.0598 },
+        { "lat": 42.3608, "lon": -71.0598 },
+        { "lat": 42.3608, "lon": -71.0592 },
+        { "lat": 42.3602, "lon": -71.0592 },
+        { "lat": 42.3602, "lon": -71.0598 }
+      ]
+    }
+  ]
+}

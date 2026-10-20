@@ -11,7 +11,7 @@ const ChunkManagerClass = preload("chunk_manager.gd")
 
 
 ## Build a complete CityRoot Node3D hierarchy with lighting, environment, camera, buildings, and roads
-static func build_city_scene(buildings_data: Array, roads_data: Array = [], create_colliders: bool = true, batched_buildings: bool = false, use_spatial_chunks: bool = false, chunk_size: float = 500.0, lod_max_distance: float = 1500.0) -> Node3D:
+static func build_city_scene(buildings_data: Array, roads_data: Array = [], create_colliders: bool = true, batched_buildings: bool = false, use_spatial_chunks: bool = false, chunk_size: float = 500.0, lod_max_distance: float = 1500.0, use_csg_buildings: bool = false) -> Node3D:
 	var city_root = Node3D.new()
 	city_root.name = "CityRoot"
 
@@ -57,7 +57,7 @@ static func build_city_scene(buildings_data: Array, roads_data: Array = [], crea
 		streets = RoadBuilderClass.build_roads_node(roads_data, create_colliders)
 		streets.name = "Streets"
 		city_root.add_child(streets)
-		buildings_root = BuildingBuilderClass.build_buildings_node(buildings_data, create_colliders, batched_buildings)
+		buildings_root = BuildingBuilderClass.build_buildings_node(buildings_data, create_colliders, batched_buildings, use_csg_buildings)
 		buildings_root.name = "Buildings"
 		city_root.add_child(buildings_root)
 
@@ -96,6 +96,27 @@ static func _accumulate_bounds_recursive(node: Node, parent_xform: Transform3D, 
 		var mi = node as MeshInstance3D
 		if mi.mesh:
 			var local_aabb = mi.mesh.get_aabb()
+			var transformed_aabb = cur_xform * local_aabb
+			if not state["found"]:
+				state["aabb"] = transformed_aabb
+				state["found"] = true
+			else:
+				state["aabb"] = (state["aabb"] as AABB).merge(transformed_aabb)
+	elif node is CSGPolygon3D:
+		var csg = node as CSGPolygon3D
+		var poly = csg.polygon
+		if poly.size() > 0:
+			var min_x = poly[0].x
+			var max_x = poly[0].x
+			var min_y = poly[0].y
+			var max_y = poly[0].y
+			for pt in poly:
+				min_x = minf(min_x, pt.x)
+				max_x = maxf(max_x, pt.x)
+				min_y = minf(min_y, pt.y)
+				max_y = maxf(max_y, pt.y)
+			var depth = csg.depth
+			var local_aabb = AABB(Vector3(min_x, min_y, -depth), Vector3(max_x - min_x, max_y - min_y, depth))
 			var transformed_aabb = cur_xform * local_aabb
 			if not state["found"]:
 				state["aabb"] = transformed_aabb

@@ -43,7 +43,30 @@ Once the **OSM Importer** plugin is enabled:
 2. Click **🌐 Open Web Selector**. The plugin opens the embedded MapLibre web app in your default browser (running on `http://127.0.0.1:8080`).
 3. Pan or search for an area, drag a bounding box, and click **⚡ Send to Godot**.
 4. The web app transfers the data directly over HTTP into Godot. The plugin saves it to `res://data/osm_export.json`, automatically generates the 3D city scene (`res://city_viewer.tscn`) with extruded buildings, roof triangulation, PBR materials, and physics colliders, and opens it directly in the 3D editor viewport.
-5. You can also re-generate at any time by clicking **🔨 Generate 3D City** in the bottom panel dock, or press **F5** to run the flycam inspection mode.
+5. You can also re-generate at any time by clicking **🔨 Generate 3D City** in the bottom panel dock, or press **F5** to run the 3D inspection viewer (Left/Right-click drag to look, Mouse Wheel to zoom, WASD / Arrows to fly, [H] to toggle the HUD).
+
+### Building Generation Modes
+
+* **Extrude 2D Footprints (`CSGPolygon3D`) — Recommended for Small Areas & Prototyping:**
+  * Enabled by default via the **Extrude 2D Footprints (CSG)** checkbox in the bottom dock panel.
+  * Each building is generated as an extruded 2D polygon footprint centered at its real-world centroid and base elevation.
+  * **Interactive in-editor editing:** Clicking any building in the Godot 3D viewport exposes the 2D polygon handles so you can drag vertices, reshape footprints, or adjust the `depth` (height) property directly in the Inspector.
+  * Courtyards and interior lightwells are carved cleanly using child `CSGPolygon3D` nodes configured with `OPERATION_SUBTRACTION`.
+  * Colliders are handled natively on the CSG node (`use_collision = true`).
+
+* **Standard Static Mesh (`ArrayMesh`) — Recommended for Large / City-Scale Imports:**
+  * Uncheck **Extrude 2D Footprints (CSG)** to use the high-performance `ArrayMesh` pipeline.
+  * Generates two separate surfaces per building (Surface 0: Walls with unrolled UVs; Surface 1: Roofs triangulated via Earcut).
+  * Supports material batching and spatial 500m grid chunking for maximum draw-call efficiency across thousands of buildings.
+
+### Future Enhancement to Try: 2D Footprint Simplification (Douglas-Peucker)
+
+Real-world OpenStreetMap footprints traced from aerial satellite photography often contain 30–60 vertices per building, including tiny centimeter-level jitter, alcove notches, and redundant collinear points along straight walls.
+
+A planned/experimental enhancement is running a **Ramer-Douglas-Peucker (RDP)** or **Visvalingam-Whyatt** 2D polygon simplification pass before extrusion:
+* **Straightening walls:** Setting a simplification tolerance ($\epsilon \approx 0.5\text{m} - 1.0\text{m}$) eliminates microscopic edge segments and snaps noisy outlines into crisp, clean rectangular shapes.
+* **Right-angle orthogonalization:** Snapping corners near $90^\circ$ creates clean, stylized architectural "white-box" geometry.
+* **Reduced complexity:** Decreases footprint vertex counts by 70–85%, producing cleaner wireframes in both `CSGPolygon3D` and `ArrayMesh` modes without sacrificing building silhouette fidelity.
 ---
 
 ## Running the Web Downloader in Development Mode

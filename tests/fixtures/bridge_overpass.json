@@ -1,0 +1,54 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "generator": "osm-to-godot test fixtures",
+    "timestamp": "2026-10-19T12:00:00.000Z",
+    "source": "overpass",
+    "bbox": {
+      "south": 42.3580,
+      "west": -71.0620,
+      "north": 42.3620,
+      "east": -71.0580
+    },
+    "centroid": {
+      "lat": 42.3600,
+      "lon": -71.0600
+    }
+  },
+  "elements": [
+    {
+      "type": "way",
+      "id": 3101,
+      "tags": {
+        "highway": "primary",
+        "name": "Surface Highway (Ground Level 0)",
+        "lanes": "4",
+        "layer": "0",
+        "surface": "asphalt"
+      },
+      "geometry": [
+        { "lat": 42.3600, "lon": -71.0620 },
+        { "lat": 42.3600, "lon": -71.0600 },
+        { "lat": 42.3600, "lon": -71.0580 }
+      ]
+    },
+    {
+      "type": "way",
+      "id": 3102,
+      "tags": {
+        "highway": "motorway",
+        "name": "Elevated Overpass (Layer +1 Bridge)",
+        "bridge": "yes",
+        "layer": "1",
+        "lanes": "4",
+        "surface": "asphalt"
+      },
+      "geometry": [
+        { "lat": 42.3585, "lon": -71.0600 },
+        { "lat": 42.3595, "lon": -71.0600 },
+        { "lat": 42.3605, "lon": -71.0600 },
+        { "lat": 42.3615, "lon": -71.0600 }
+      ]
+    }
+  ]
+}

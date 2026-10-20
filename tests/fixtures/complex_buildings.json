@@ -1,0 +1,93 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "generator": "osm-to-godot test fixtures",
+    "timestamp": "2026-10-19T12:00:00.000Z",
+    "source": "overpass",
+    "bbox": {
+      "south": 42.3580,
+      "west": -71.0620,
+      "north": 42.3620,
+      "east": -71.0580
+    },
+    "centroid": {
+      "lat": 42.3600,
+      "lon": -71.0600
+    }
+  },
+  "elements": [
+    {
+      "type": "relation",
+      "id": 2101,
+      "tags": {
+        "type": "multipolygon",
+        "building": "commercial",
+        "building:levels": "6",
+        "building:material": "glass",
+        "roof:material": "concrete"
+      },
+      "members": [
+        {
+          "type": "way",
+          "ref": 21011,
+          "role": "outer",
+          "geometry": [
+            { "lat": 42.3590, "lon": -71.0610 },
+            { "lat": 42.3600, "lon": -71.0610 },
+            { "lat": 42.3600, "lon": -71.0598 },
+            { "lat": 42.3590, "lon": -71.0598 },
+            { "lat": 42.3590, "lon": -71.0610 }
+          ]
+        },
+        {
+          "type": "way",
+          "ref": 21012,
+          "role": "inner",
+          "geometry": [
+            { "lat": 42.3593, "lon": -71.0606 },
+            { "lat": 42.3597, "lon": -71.0606 },
+            { "lat": 42.3597, "lon": -71.0602 },
+            { "lat": 42.3593, "lon": -71.0602 },
+            { "lat": 42.3593, "lon": -71.0606 }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "way",
+      "id": 2201,
+      "tags": {
+        "building": "part",
+        "building:levels": "20",
+        "min_height": "0",
+        "height": "70 m",
+        "building:material": "concrete"
+      },
+      "geometry": [
+        { "lat": 42.3603, "lon": -71.0612 },
+        { "lat": 42.3615, "lon": -71.0612 },
+        { "lat": 42.3615, "lon": -71.0602 },
+        { "lat": 42.3603, "lon": -71.0602 },
+        { "lat": 42.3603, "lon": -71.0612 }
+      ]
+    },
+    {
+      "type": "way",
+      "id": 2202,
+      "tags": {
+        "building": "part",
+        "building:levels": "10",
+        "min_height": "70",
+        "height": "105 m",
+        "building:material": "glass"
+      },
+      "geometry": [
+        { "lat": 42.3606, "lon": -71.0609 },
+        { "lat": 42.3612, "lon": -71.0609 },
+        { "lat": 42.3612, "lon": -71.0605 },
+        { "lat": 42.3606, "lon": -71.0605 },
+        { "lat": 42.3606, "lon": -71.0609 }
+      ]
+    }
+  ]
+}

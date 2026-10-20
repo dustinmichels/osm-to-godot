@@ -79,20 +79,44 @@ const COLOR_ALIASES: Dictionary = {
 
 # --- 3.1 Height & Floor Level Inference ---
 
-## Sanitize and parse numeric dimensions from string tags (e.g. "15", "15m", "15.2 m", "approx 3").
+## Word number mapping for non-numeric words in tags (e.g. "two", "three")
+const NUMBER_WORDS: Dictionary = {
+	"zero": 0.0,
+	"one": 1.0,
+	"two": 2.0,
+	"three": 3.0,
+	"four": 4.0,
+	"five": 5.0,
+	"six": 6.0,
+	"seven": 7.0,
+	"eight": 8.0,
+	"nine": 9.0,
+	"ten": 10.0,
+	"eleven": 11.0,
+	"twelve": 12.0
+}
+
+## Robust regex sanitizer for numeric tags (e.g. "12 meters", "lanes=two", "approx 3", "15.5m", "10,5")
 static func parse_numeric_dimension(val: Variant, default_val: float = 0.0) -> float:
 	if val == null:
 		return default_val
 	if val is float or val is int:
 		return float(val)
-	if not (val is String):
-		return default_val
-		
-	var s: String = val.strip_edges()
+	var s: String = str(val).strip_edges().to_lower()
 	if s.is_empty():
 		return default_val
 		
-	# Match floating point or integer number
+	# Check word numbers like "two", "three"
+	if NUMBER_WORDS.has(s):
+		return NUMBER_WORDS[s]
+	for word in NUMBER_WORDS.keys():
+		if s == word or s.begins_with(word + " ") or s.ends_with(" " + word):
+			return NUMBER_WORDS[word]
+			
+	# Normalize European comma decimal separator if present: "12,5" -> "12.5"
+	s = s.replace(",", ".")
+	
+	# Match floating point or integer number, even if surrounded by text ("approx 3", "12 meters", "14.5m")
 	var regex = RegEx.new()
 	regex.compile("([0-9]+(?:\\.[0-9]+)?)")
 	var m = regex.search(s)
@@ -100,7 +124,6 @@ static func parse_numeric_dimension(val: Variant, default_val: float = 0.0) -> f
 		return float(m.strings[1])
 		
 	return default_val
-
 ## Resolve building heights following the deterministic resolution ladder:
 ## 1. Explicit `height` tag
 ## 2. `building:levels` tag * 3.3m
@@ -456,14 +479,56 @@ static func create_building_mesh(mesh_data: Dictionary) -> ArrayMesh:
 		
 	return mesh
 
+## Extract human-readable building name from OSM tags if present.
+static func get_building_display_name(building: Dictionary) -> String:
+	var tags: Dictionary = building.get("tags", {})
+	if tags.has("name") and not str(tags.get("name")).strip_edges().is_empty():
+		return str(tags.get("name")).strip_edges()
+	if tags.has("name:en") and not str(tags.get("name:en")).strip_edges().is_empty():
+		return str(tags.get("name:en")).strip_edges()
+	if tags.has("addr:housename") and not str(tags.get("addr:housename")).strip_edges().is_empty():
+		return str(tags.get("addr:housename")).strip_edges()
+	if tags.has("brand") and not str(tags.get("brand")).strip_edges().is_empty():
+		return str(tags.get("brand")).strip_edges()
+	return ""
+
+## Determine a clean node name for a building model in the Godot scene hierarchy.
+## Uses the building's OSM name if available, falling back to "Building_<id>".
+static func get_building_node_name(building: Dictionary) -> String:
+	var display_name = get_building_display_name(building)
+	if not display_name.is_empty():
+		return sanitize_node_name(display_name)
+	return "Building_" + str(building.get("id", "unknown"))
+
+## Sanitize a string for use as a Godot Node name (replaces invalid characters: . : @ / " %)
+static func sanitize_node_name(raw_name: String) -> String:
+	var cleaned = raw_name.strip_edges()
+	var invalid_chars = [".", ":", "@", "/", "\"", "%"]
+	for c in invalid_chars:
+		cleaned = cleaned.replace(c, "_")
+	if cleaned.is_empty():
+		return "Building"
+	return cleaned
+
 ## Create a complete MeshInstance3D with optional StaticBody3D collision shape
 static func create_building_node(building: Dictionary, create_collider: bool = true) -> MeshInstance3D:
 	var mesh_data = build_building_mesh_data(building)
 	var mesh = create_building_mesh(mesh_data)
 	
 	var instance = MeshInstance3D.new()
-	instance.name = "Building_" + str(building.get("id", "unknown"))
+	instance.name = get_building_node_name(building)
 	instance.mesh = mesh
+	
+	# Store OSM metadata on the node for inspection, raycasting, and script access
+	var tags: Dictionary = building.get("tags", {})
+	var b_id = building.get("id")
+	if b_id != null:
+		instance.set_meta("osm_id", b_id)
+	var b_name = get_building_display_name(building)
+	if not b_name.is_empty():
+		instance.set_meta("osm_name", b_name)
+	if not tags.is_empty():
+		instance.set_meta("osm_tags", tags)
 	
 	if create_collider and mesh.get_surface_count() > 0:
 		var static_body = StaticBody3D.new()
@@ -476,6 +541,107 @@ static func create_building_node(building: Dictionary, create_collider: bool = t
 		
 	return instance
 
+## Create an extruded 2D footprint building node using Godot 4's native CSGPolygon3D.
+## The building's transform is placed at its horizontal centroid and base elevation,
+## with the 2D polygon defined in the local horizontal plane and extruded vertically by height.
+## Inner rings (courtyards/holes) are cut using child CSGPolygon3D nodes with OPERATION_SUBTRACTION.
+static func create_csg_building_node(building: Dictionary, create_collider: bool = true) -> Node3D:
+	var tags: Dictionary = building.get("tags", {})
+	var outer_rings: Array = building.get("outer_rings", [])
+	if outer_rings.is_empty():
+		return null
+		
+	var h_info = resolve_height(tags)
+	var base_y: float = h_info["base_y"]
+	var height: float = maxf(h_info["height"], 0.5)
+	var inner_rings: Array = building.get("inner_rings", [])
+	
+	var created_nodes: Array[CSGPolygon3D] = []
+	for ring_idx in range(outer_rings.size()):
+		var outer_pts: PackedVector3Array = outer_rings[ring_idx]
+		var n_pts = outer_pts.size()
+		if n_pts < 3:
+			continue
+		var unique_count = n_pts
+		if outer_pts[0].distance_squared_to(outer_pts[n_pts - 1]) < 0.0001:
+			unique_count = n_pts - 1
+		if unique_count < 3:
+			continue
+			
+		var center_x: float = 0.0
+		var center_z: float = 0.0
+		for i in range(unique_count):
+			center_x += outer_pts[i].x
+			center_z += outer_pts[i].z
+		center_x /= float(unique_count)
+		center_z /= float(unique_count)
+		
+		var csg = CSGPolygon3D.new()
+		csg.name = get_building_node_name(building) if outer_rings.size() == 1 else (get_building_node_name(building) + "_" + str(ring_idx))
+		csg.mode = CSGPolygon3D.MODE_DEPTH
+		csg.depth = height
+		csg.rotation_degrees = Vector3(90.0, 0.0, 0.0)
+		csg.position = Vector3(center_x, base_y, center_z)
+		
+		var poly_2d = PackedVector2Array()
+		poly_2d.resize(unique_count)
+		for i in range(unique_count):
+			var pt = outer_pts[i]
+			poly_2d[i] = Vector2(pt.x - center_x, pt.z - center_z)
+		csg.polygon = poly_2d
+		
+		csg.material = resolve_wall_material(tags, true)
+		
+		if create_collider:
+			csg.use_collision = true
+			csg.collision_layer = 1
+			csg.collision_mask = 1
+			
+		# Subtracted child holes for courtyards / lightwells
+		for hole_idx in range(inner_rings.size()):
+			var hole_pts: PackedVector3Array = inner_rings[hole_idx]
+			var h_count = hole_pts.size()
+			var h_unique = h_count
+			if h_count >= 3 and hole_pts[0].distance_squared_to(hole_pts[h_count - 1]) < 0.0001:
+				h_unique = h_count - 1
+			if h_unique >= 3:
+				var hole_csg = CSGPolygon3D.new()
+				hole_csg.name = "Hole_" + str(hole_idx)
+				hole_csg.operation = CSGShape3D.OPERATION_SUBTRACTION
+				hole_csg.mode = CSGPolygon3D.MODE_DEPTH
+				hole_csg.depth = height + 2.0
+				hole_csg.position = Vector3(0.0, 0.0, 1.0)
+				var h_poly = PackedVector2Array()
+				h_poly.resize(h_unique)
+				for j in range(h_unique):
+					var h_pt = hole_pts[j]
+					h_poly[j] = Vector2(h_pt.x - center_x, h_pt.z - center_z)
+				hole_csg.polygon = h_poly
+				csg.add_child(hole_csg, true)
+				
+		# Store metadata
+		var b_id = building.get("id")
+		if b_id != null:
+			csg.set_meta("osm_id", b_id)
+		var b_name = get_building_display_name(building)
+		if not b_name.is_empty():
+			csg.set_meta("osm_name", b_name)
+		if not tags.is_empty():
+			csg.set_meta("osm_tags", tags)
+			
+		created_nodes.append(csg)
+		
+	if created_nodes.is_empty():
+		return null
+	if created_nodes.size() == 1:
+		return created_nodes[0]
+		
+	var multi_root = Node3D.new()
+	multi_root.name = get_building_node_name(building)
+	for c in created_nodes:
+		multi_root.add_child(c, true)
+	return multi_root
+
 ## Build a root Node3D containing batched building meshes grouped by material
 static func build_batched_buildings_node(buildings: Array, create_colliders: bool = true) -> Node3D:
 	return build_buildings_node(buildings, create_colliders, true)
@@ -484,17 +650,24 @@ static func build_batched_buildings_node(buildings: Array, create_colliders: boo
 ## When batched is true, combines building meshes by material into consolidated multi-surface meshes
 ## to drastically reduce draw calls and node count.
 ## When batched is false (default), retains 1 MeshInstance3D per building.
-static func build_buildings_node(buildings: Array, create_colliders: bool = true, batched: bool = false) -> Node3D:
+static func build_buildings_node(buildings: Array, create_colliders: bool = true, batched: bool = false, use_csg: bool = false) -> Node3D:
 	var root = Node3D.new()
 	root.name = "Buildings"
 	
+	if use_csg:
+		for b in buildings:
+			if b is Dictionary:
+				var node = create_csg_building_node(b, create_colliders)
+				if node != null:
+					root.add_child(node, true)
+		return root
+		
 	if not batched:
 		for b in buildings:
 			if b is Dictionary:
 				var node = create_building_node(b, create_colliders)
-				root.add_child(node)
+				root.add_child(node, true)
 		return root
-		
 	# Batched mode: group walls by wall material and roofs by roof material
 	var wall_batches: Dictionary = {} # mat_key -> { "material": StandardMaterial3D, "vertices": ..., "normals": ..., "uvs": ..., "indices": ... }
 	var roof_batches: Dictionary = {} # mat_key -> { "material": StandardMaterial3D, "vertices": ..., "normals": ..., "uvs": ..., "indices": ... }

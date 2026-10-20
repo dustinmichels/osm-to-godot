@@ -226,24 +226,23 @@ Comprehensive implementation plan for extracting real-world OpenStreetMap (OSM) 
 
 ## Phase 7: Edge Cases, Testing & Verification
 
-- [ ] **7.1 Edge Case Handling**
+- [x] **7.1 Edge Case Handling**
   - [x] Self-intersecting and unclosed building ways: detect and auto-repair or skip with logged warning.
   - [x] Cul-de-sacs and dead-end roads: properly cap ribbon ends with half-circle or square end-caps.
   - [x] Multipolygon relations with disconnected outer rings: parse each outer ring as a separate building footprint.
-  - [ ] Roundabouts (`junction=roundabout`): maintain smooth curvature and correct lane widths along circular ways.
-  - [ ] Non-numeric values in numeric tags (e.g. `height="12 meters"`, `lanes="two"`, `building:levels="approx 3"`): robust regex sanitizer.
+  - [x] Roundabouts (`junction=roundabout`): maintain smooth curvature and correct lane widths along circular ways.
+  - [x] Non-numeric values in numeric tags (e.g. `height="12 meters"`, `lanes="two"`, `building:levels="approx 3"`): robust regex sanitizer.
 
-- [ ] **7.2 Verification Suite**
-  - [ ] Create test fixtures in `tests/fixtures/`:
+- [x] **7.2 Verification Suite**
+  - [x] Create test fixtures in `tests/fixtures/`:
     - `simple_grid.json`: basic 4-way intersection, residential streets, simple rectangular buildings.
     - `bike_infrastructure.json`: dedicated cycle tracks, shared bus/bike lanes, painted door-zone lanes.
     - `complex_buildings.json`: donut-shaped building with inner courtyard, high-rise tower with stepped roof.
     - `bridge_overpass.json`: multi-layer highway interchange with bridge layer $+1$ and ground layer $0$.
-  - [ ] Automated headless test script:
+  - [x] Automated headless test script:
     - Run Godot headless importer against all fixtures.
     - Verify vertex counts, valid AABB bounding boxes, zero NaN values, and non-empty mesh surfaces.
-  - [ ] Visual smoke test in Godot 3D viewport.
-
+  - [x] Visual smoke test in Godot 3D viewport.
 ---
 
 ## Recommended Project Directory Structure

@@ -16,7 +16,8 @@ func _init() -> void:
 	passed = test_materials_and_colors() and passed
 	passed = test_wall_extrusion_and_normals() and passed
 	passed = test_full_building_generation() and passed
-	
+	passed = test_building_naming() and passed
+	passed = test_csg_building_generation() and passed
 	if passed:
 		print("========================================")
 		print("ALL PHASE 3 TESTS PASSED!")
@@ -334,6 +335,238 @@ func test_full_building_generation() -> bool:
 		
 	buildings_root.free()
 	print("Full building generation tests passed!")
+	return true
+
+func test_building_naming() -> bool:
+	print("\n--- Test 3.6: Building Model Naming from OSM Tags ---")
+	
+	var ring = PackedVector3Array([
+		Vector3(0, 0, 0),
+		Vector3(10, 0, 0),
+		Vector3(10, 0, 10),
+		Vector3(0, 0, 10),
+		Vector3(0, 0, 0)
+	])
+	
+	# 1. Building with explicit name
+	var bld_named = {
+		"id": 29729595,
+		"tags": {
+			"building": "yes",
+			"name": "Dunkin'",
+			"amenity": "fast_food"
+		},
+		"outer_rings": [ring],
+		"inner_rings": []
+	}
+	var node_named = BldBuilder.create_building_node(bld_named, false)
+	if str(node_named.name) != "Dunkin'":
+		printerr("FAIL: Expected node name 'Dunkin'', got: ", node_named.name)
+		node_named.free()
+		return false
+	if node_named.get_meta("osm_name", "") != "Dunkin'":
+		printerr("FAIL: Expected osm_name metadata 'Dunkin'', got: ", node_named.get_meta("osm_name", ""))
+		node_named.free()
+		return false
+	if node_named.get_meta("osm_id", 0) != 29729595:
+		printerr("FAIL: Expected osm_id metadata 29729595, got: ", node_named.get_meta("osm_id", 0))
+		node_named.free()
+		return false
+	node_named.free()
+	print("Named building verified: Dunkin'")
+	
+	# 2. Building without name (fallback to Building_<id>)
+	var bld_unnamed = {
+		"id": 12345,
+		"tags": {
+			"building": "residential"
+		},
+		"outer_rings": [ring],
+		"inner_rings": []
+	}
+	var node_unnamed = BldBuilder.create_building_node(bld_unnamed, false)
+	if str(node_unnamed.name) != "Building_12345":
+		printerr("FAIL: Expected node name 'Building_12345', got: ", node_unnamed.name)
+		node_unnamed.free()
+		return false
+	if node_unnamed.has_meta("osm_name"):
+		printerr("FAIL: Unnamed building should not have osm_name meta")
+		node_unnamed.free()
+		return false
+	node_unnamed.free()
+	print("Unnamed building fallback verified: Building_12345")
+	
+	# 3. Name sanitization of invalid characters (. : @ / " %)
+	var bld_special = {
+		"id": 999,
+		"tags": {
+			"building": "commercial",
+			"name": "Cafe / Bar: Special @100% \"Express\""
+		},
+		"outer_rings": [ring],
+		"inner_rings": []
+	}
+	var node_special = BldBuilder.create_building_node(bld_special, false)
+	var s_name = str(node_special.name)
+	for invalid_c in [":", "@", "/", "\"", "%"]:
+		if invalid_c in s_name:
+			printerr("FAIL: Node name contains unsanitized char '", invalid_c, "': ", s_name)
+			node_special.free()
+			return false
+	print("Sanitized building name verified: ", s_name)
+	node_special.free()
+	
+	# 4. Fallback to addr:housename or brand
+	var bld_brand = {
+		"id": 777,
+		"tags": {
+			"building": "retail",
+			"brand": "Target"
+		},
+		"outer_rings": [ring],
+		"inner_rings": []
+	}
+	var node_brand = BldBuilder.create_building_node(bld_brand, false)
+	if str(node_brand.name) != "Target":
+		printerr("FAIL: Expected brand fallback 'Target', got: ", node_brand.name)
+		node_brand.free()
+		return false
+	node_brand.free()
+	print("Brand fallback name verified: Target")
+	
+	# 5. Unique sibling names when adding multiple buildings with identical names
+	var root = BldBuilder.build_buildings_node([bld_named, bld_named], false, false)
+	if root.get_child_count() != 2:
+		printerr("FAIL: Expected 2 children in root, got: ", root.get_child_count())
+		root.free()
+		return false
+	var child1_name = str(root.get_child(0).name)
+	var child2_name = str(root.get_child(1).name)
+	if child1_name == child2_name:
+		printerr("FAIL: Sibling building nodes have duplicate names: ", child1_name)
+		root.free()
+		return false
+	print("Sibling unique naming verified: ", child1_name, " and ", child2_name)
+	root.free()
+	
+	print("Building naming tests passed!")
+	return true
+
+func test_csg_building_generation() -> bool:
+	print("\n--- Test 3.7: CSGPolygon3D 2D Footprint Extrusion ---")
+	
+	# Simple rectangular building
+	var simple_bld = {
+		"id": 9001,
+		"tags": {"building": "residential", "name": "Townhouse A", "building:levels": "2"},
+		"outer_rings": [
+			PackedVector3Array([
+				Vector3(10.0, 0.0, 20.0),
+				Vector3(20.0, 0.0, 20.0),
+				Vector3(20.0, 0.0, 30.0),
+				Vector3(10.0, 0.0, 30.0),
+				Vector3(10.0, 0.0, 20.0)
+			])
+		],
+		"inner_rings": []
+	}
+	
+	var csg_node = BldBuilder.create_csg_building_node(simple_bld, true)
+	if csg_node == null:
+		printerr("FAIL: create_csg_building_node returned null")
+		return false
+	if not (csg_node is CSGPolygon3D):
+		printerr("FAIL: Expected CSGPolygon3D, got: ", csg_node.get_class())
+		csg_node.free()
+		return false
+	var csg = csg_node as CSGPolygon3D
+	
+	# Verify name and metadata
+	if csg.name != "Townhouse A":
+		printerr("FAIL: Expected name 'Townhouse A', got: ", csg.name)
+		csg.free()
+		return false
+	if csg.get_meta("osm_id") != 9001:
+		printerr("FAIL: Expected osm_id meta 9001, got: ", csg.get_meta("osm_id"))
+		csg.free()
+		return false
+		
+	# Verify mode, depth, and collision
+	if csg.mode != CSGPolygon3D.MODE_DEPTH:
+		printerr("FAIL: Expected CSG mode MODE_DEPTH, got: ", csg.mode)
+		csg.free()
+		return false
+	if abs(csg.depth - (2 * 3.3)) > 0.01:
+		printerr("FAIL: Expected depth 6.6, got: ", csg.depth)
+		csg.free()
+		return false
+	if not csg.use_collision:
+		printerr("FAIL: Expected use_collision true")
+		csg.free()
+		return false
+	if csg.polygon.size() != 4:
+		printerr("FAIL: Expected 4 unique polygon vertices, got: ", csg.polygon.size())
+		csg.free()
+		return false
+	# Centroid position
+	if abs(csg.position.x - 15.0) > 0.01 or abs(csg.position.z - 25.0) > 0.01:
+		printerr("FAIL: Expected centroid at (15, 0, 25), got: ", csg.position)
+		csg.free()
+		return false
+	csg.free()
+	print("Verified simple CSGPolygon3D building extrusion.")
+	
+	# Building with courtyard / inner ring
+	var courtyard_bld = {
+		"id": 9002,
+		"tags": {"building": "apartments", "height": "12"},
+		"outer_rings": [
+			PackedVector3Array([
+				Vector3(0.0, 0.0, 0.0),
+				Vector3(30.0, 0.0, 0.0),
+				Vector3(30.0, 0.0, 30.0),
+				Vector3(0.0, 0.0, 30.0),
+				Vector3(0.0, 0.0, 0.0)
+			])
+		],
+		"inner_rings": [
+			PackedVector3Array([
+				Vector3(10.0, 0.0, 10.0),
+				Vector3(20.0, 0.0, 10.0),
+				Vector3(20.0, 0.0, 20.0),
+				Vector3(10.0, 0.0, 20.0),
+				Vector3(10.0, 0.0, 10.0)
+			])
+		]
+	}
+	var hole_node = BldBuilder.create_csg_building_node(courtyard_bld, true)
+	if hole_node.get_child_count() != 1:
+		printerr("FAIL: Expected 1 child hole in CSG building, got: ", hole_node.get_child_count())
+		hole_node.free()
+		return false
+	var hole_child = hole_node.get_child(0) as CSGPolygon3D
+	if hole_child.operation != CSGShape3D.OPERATION_SUBTRACTION:
+		printerr("FAIL: Expected child hole operation SUBTRACTION, got: ", hole_child.operation)
+		hole_node.free()
+		return false
+	hole_node.free()
+	print("Verified CSG building with subtracted courtyard hole.")
+	
+	# Verify build_buildings_node with use_csg = true
+	var csg_root = BldBuilder.build_buildings_node([simple_bld, courtyard_bld], true, false, true)
+	if csg_root.get_child_count() != 2:
+		printerr("FAIL: Expected 2 children in csg_root, got: ", csg_root.get_child_count())
+		csg_root.free()
+		return false
+	for child in csg_root.get_children():
+		if not (child is CSGPolygon3D):
+			printerr("FAIL: Root child is not CSGPolygon3D: ", child.get_class())
+			csg_root.free()
+			return false
+	csg_root.free()
+	print("Verified build_buildings_node with use_csg=true.")
+	
+	print("CSG building generation tests passed!")
 	return true
 
 func _calc_indexed_area_2d(points: PackedVector2Array, indices: PackedInt32Array) -> float:

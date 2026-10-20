@@ -152,20 +152,9 @@ static func get_surface_material(surface_type: String) -> StandardMaterial3D:
 	
 	_material_cache[surface_type] = mat
 	return mat
-## Sanitize and parse numeric dimensions from string tags (e.g. "12", "12m", "10.5 m").
+## Robust regex sanitizer for numeric tags (e.g. "12 meters", "two", "approx 3", "10,5")
 static func parse_numeric_dimension(val: Variant, default_val: float = 0.0) -> float:
-	if val == null:
-		return default_val
-	if typeof(val) == TYPE_FLOAT or typeof(val) == TYPE_INT:
-		return float(val)
-	var s = str(val).strip_edges().to_lower()
-	if s.is_empty():
-		return default_val
-	# Strip units like 'm', 'meters', etc.
-	s = s.replace("m", "").replace("meters", "").strip_edges()
-	if s.is_valid_float():
-		return s.to_float()
-	return default_val
+	return BuildingBuilder.parse_numeric_dimension(val, default_val)
 
 ## 4.1 Street Width Inference Table
 ## Returns a dictionary: {"width": float, "lanes": int, "lane_width": float}
@@ -204,11 +193,11 @@ static func resolve_road_width(tags: Dictionary) -> Dictionary:
 		var raw_lanes = parse_numeric_dimension(tags.get("lanes"), 1.0)
 		var num_lanes = maxi(1, int(raw_lanes))
 		var lane_w = 3.0
-		if highway in ["motorway", "motorway_link", "trunk", "trunk_link", "primary", "primary_link"]:
-			lane_w = 3.5
-		elif str(tags.get("junction", "")).strip_edges().to_lower() == "roundabout":
+		if str(tags.get("junction", "")).strip_edges().to_lower() == "roundabout":
 			# Roundabouts require wider circulatory lanes for vehicular turn radius
 			lane_w = 4.5
+		elif highway in ["motorway", "motorway_link", "trunk", "trunk_link", "primary", "primary_link"]:
+			lane_w = 3.5
 		else:
 			lane_w = 3.0
 		return {

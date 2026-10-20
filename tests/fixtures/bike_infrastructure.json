@@ -1,0 +1,71 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "generator": "osm-to-godot test fixtures",
+    "timestamp": "2026-10-19T12:00:00.000Z",
+    "source": "overpass",
+    "bbox": {
+      "south": 42.3580,
+      "west": -71.0620,
+      "north": 42.3620,
+      "east": -71.0580
+    },
+    "centroid": {
+      "lat": 42.3600,
+      "lon": -71.0600
+    }
+  },
+  "elements": [
+    {
+      "type": "way",
+      "id": 1101,
+      "tags": {
+        "highway": "cycleway",
+        "name": "Emerald Greenway Cycle Track",
+        "surface": "asphalt",
+        "width": "3.0"
+      },
+      "geometry": [
+        { "lat": 42.3585, "lon": -71.0610 },
+        { "lat": 42.3595, "lon": -71.0610 },
+        { "lat": 42.3605, "lon": -71.0610 },
+        { "lat": 42.3615, "lon": -71.0610 }
+      ]
+    },
+    {
+      "type": "way",
+      "id": 1102,
+      "tags": {
+        "highway": "primary",
+        "name": "Transit Boulevard",
+        "lanes": "3",
+        "busway:right": "lane",
+        "cycleway:right": "share_busway",
+        "surface": "asphalt"
+      },
+      "geometry": [
+        { "lat": 42.3600, "lon": -71.0620 },
+        { "lat": 42.3600, "lon": -71.0600 },
+        { "lat": 42.3600, "lon": -71.0580 }
+      ]
+    },
+    {
+      "type": "way",
+      "id": 1103,
+      "tags": {
+        "highway": "secondary",
+        "name": "Commercial Corridor",
+        "lanes": "2",
+        "cycleway:both": "lane",
+        "parking:both": "parallel",
+        "surface": "asphalt"
+      },
+      "geometry": [
+        { "lat": 42.3585, "lon": -71.0595 },
+        { "lat": 42.3595, "lon": -71.0595 },
+        { "lat": 42.3605, "lon": -71.0595 },
+        { "lat": 42.3615, "lon": -71.0595 }
+      ]
+    }
+  ]
+}
