@@ -115,16 +115,21 @@ The converted file is written to `data/map.geojson`.
 
 ## Running Automated Tests
 
-Run the headless Godot test suite to verify coordinate projection, geometry parsing, and HTTP server integration:
+Run the headless Godot test suite against all fixtures:
 
 ```bash
 mise run test
 ```
 
-Or run individual test scripts directly:
+Or run directly via Godot:
 ```bash
-godot --headless --path godot_project -s res://test_phase2.gd
-godot --headless --path godot_project -s res://test_http_server.gd
+godot --headless --path godot_project -s res://test_importer_headless.gd
+```
+
+Run the web test suite:
+```bash
+mise run test-web
+# or: cd web && bun test
 ```
 
 ---

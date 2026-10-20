@@ -8,7 +8,8 @@
     "build": "vue-tsc && vite build",
     "build:addon": "vue-tsc && vite build && rm -rf ../godot_project/addons/osm_importer/web_dist && mkdir -p ../godot_project/addons/osm_importer/web_dist && cp -r dist/* ../godot_project/addons/osm_importer/web_dist/ && touch ../godot_project/addons/osm_importer/web_dist/.gdignore",
     "preview": "vite preview",
-    "typecheck": "vue-tsc --noEmit"
+    "typecheck": "vue-tsc --noEmit",
+    "test": "bun test"
   },
   "dependencies": {
     "maplibre-gl": "^6.15.0",
