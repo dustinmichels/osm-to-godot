@@ -49,8 +49,9 @@ func parse_data(data: Dictionary) -> Dictionary:
 	# Setup projection origin
 	_init_projection_origin(metadata, elements)
 	
-	# Pre-index standalone nodes by ID for geometry resolution
+	# Pre-index standalone nodes by ID for geometry resolution and collect POI nodes
 	var node_coords: Dictionary = {}
+	var pois: Array = []
 	for el in elements:
 		if typeof(el) == TYPE_DICTIONARY and el.get("type") == "node":
 			var node_id = el.get("id")
@@ -58,7 +59,18 @@ func parse_data(data: Dictionary) -> Dictionary:
 			var lon = el.get("lon")
 			if node_id != null and lat != null and lon != null:
 				node_coords[node_id] = { "lat": float(lat), "lon": float(lon) }
-
+				var tags: Dictionary = el.get("tags", {})
+				if _is_poi_node(tags):
+					var pos_3d = projection.project(float(lat), float(lon))
+					var p_name = str(tags.get("name", tags.get("name:en", ""))).strip_edges()
+					pois.append({
+						"id": node_id,
+						"tags": tags,
+						"name": p_name,
+						"lat": float(lat),
+						"lon": float(lon),
+						"position": pos_3d
+					})
 	var roads: Array = []
 	var buildings: Array = []
 	var building_ways_in_relations: Dictionary = {}
@@ -120,6 +132,35 @@ func parse_data(data: Dictionary) -> Dictionary:
 						})
 				elif not raw_pts.is_empty():
 					push_warning("OSMParser: Building way #" + str(way_id) + " has insufficient vertices or unclosed geometry; skipping.")
+	# Pass 3: Spatially associate POIs inside buildings
+	for b in buildings:
+		b["pois"] = []
+		var outer_rings: Array = b.get("outer_rings", [])
+		var inner_rings: Array = b.get("inner_rings", [])
+		for poi in pois:
+			var pt_2d = Vector2(poi.position.x, poi.position.z)
+			var in_outer = false
+			for ring in outer_rings:
+				var poly_2d = PackedVector2Array()
+				poly_2d.resize(ring.size())
+				for i in range(ring.size()):
+					poly_2d[i] = Vector2(ring[i].x, ring[i].z)
+				if Geometry2D.is_point_in_polygon(pt_2d, poly_2d):
+					in_outer = true
+					break
+			if in_outer:
+				var in_inner = false
+				for hole in inner_rings:
+					var hole_2d = PackedVector2Array()
+					hole_2d.resize(hole.size())
+					for i in range(hole.size()):
+						hole_2d[i] = Vector2(hole[i].x, hole[i].z)
+					if Geometry2D.is_point_in_polygon(pt_2d, hole_2d):
+						in_inner = true
+						break
+				if not in_inner:
+					b["pois"].append(poi)
+
 	return {
 		"metadata": metadata,
 		"projection_origin": {
@@ -127,8 +168,21 @@ func parse_data(data: Dictionary) -> Dictionary:
 			"lon": projection.origin_lon_deg
 		},
 		"roads": roads,
-		"buildings": buildings
+		"buildings": buildings,
+		"pois": pois
 	}
+
+## Determine if a node's tags represent a Point of Interest (amenity, shop, tourism, leisure, etc.)
+static func _is_poi_node(tags: Dictionary) -> bool:
+	if tags.is_empty():
+		return false
+	var poi_keys = ["amenity", "shop", "tourism", "leisure", "office", "historic", "healthcare", "craft"]
+	for k in poi_keys:
+		if tags.has(k):
+			return true
+	if tags.has("name") and not tags.has("highway") and not tags.has("building"):
+		return true
+	return false
 
 ## Initialize projection origin from metadata or compute centroid
 func _init_projection_origin(metadata: Dictionary, elements: Array) -> void:

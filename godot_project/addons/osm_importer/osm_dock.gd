@@ -15,6 +15,7 @@ var generate_btn: Button
 var chunking_checkbox: CheckBox
 var csg_checkbox: CheckBox
 var dataset_option: OptionButton
+var player_checkbox: CheckBox
 
 func _init() -> void:
 	custom_minimum_size = Vector2(0, 180)
@@ -125,6 +126,12 @@ func _build_ui() -> void:
 	chunking_checkbox.button_pressed = false
 	chunking_checkbox.tooltip_text = "Partition large city scopes into 500m x 500m grid chunks with distance-based LOD culling"
 	left_vbox.add_child(chunking_checkbox)
+	player_checkbox = CheckBox.new()
+	player_checkbox.text = "Spawn Player Character"
+	player_checkbox.button_pressed = true
+	player_checkbox.tooltip_text = "Spawn animated 3D human character with third-person camera to explore using arrow keys"
+	left_vbox.add_child(player_checkbox)
+
 	var dataset_lbl = Label.new()
 	dataset_lbl.text = "Dataset Source:"
 	dataset_lbl.add_theme_font_size_override("font_size", 11)
@@ -201,6 +208,9 @@ func should_use_spatial_chunks() -> bool:
 
 func should_use_csg_buildings() -> bool:
 	return csg_checkbox.button_pressed if csg_checkbox else true
+
+func should_spawn_player() -> bool:
+	return player_checkbox.button_pressed if player_checkbox else true
 func get_selected_dataset_path() -> String:
 	if dataset_option == null:
 		return "res://data/osm_export.json"

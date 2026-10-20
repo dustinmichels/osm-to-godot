@@ -2,12 +2,13 @@ import { describe, it, expect } from 'bun:test'
 import { matchesBBox, getCacheKey, PRESET_CACHES } from './useOverpass'
 
 describe('useOverpass caching', () => {
-  it('has medford-y in PRESET_CACHES with 110 elements', () => {
+  it('has medford-y in PRESET_CACHES with 119 elements', () => {
     const medford = PRESET_CACHES.find((p) => p.name === 'medford-y')
     expect(medford).toBeDefined()
-    expect(medford!.payload.elements.length).toBe(110)
+    expect(medford!.payload.elements.length).toBe(119)
     expect(medford!.payload.metadata.stats.highwaysCount).toBe(63)
     expect(medford!.payload.metadata.stats.buildingsCount).toBe(47)
+    expect(medford!.payload.metadata.stats.poisCount).toBe(9)
   })
 
   it('matchesBBox matches within tolerance', () => {

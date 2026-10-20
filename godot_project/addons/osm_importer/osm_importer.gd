@@ -108,8 +108,9 @@ func _on_import_received(parsed_data: Dictionary, raw_payload: Dictionary) -> vo
 
 	var use_spatial_chunks = dock.should_use_spatial_chunks() if (dock and dock.has_method("should_use_spatial_chunks")) else false
 	var use_csg = dock.should_use_csg_buildings() if (dock and dock.has_method("should_use_csg_buildings")) else false
+	var spawn_player = dock.should_spawn_player() if (dock and dock.has_method("should_spawn_player")) else true
 	if should_auto_build:
-		_generate_3d_scene(parsed_data.get("buildings", []), parsed_data.get("roads", []), create_colliders, use_spatial_chunks, use_csg)
+		_generate_3d_scene(parsed_data.get("buildings", []), parsed_data.get("roads", []), create_colliders, use_spatial_chunks, use_csg, parsed_data.get("pois", []), spawn_player)
 func _on_import_failed(error_msg: String) -> void:
 	if dock and dock.has_method("log_import_error"):
 		dock.log_import_error(error_msg)
@@ -138,9 +139,10 @@ func _on_generate_requested(create_colliders: bool, custom_path: String = "") ->
 	var parsed = parser.parse_json_string(text)
 	var use_spatial_chunks = dock.should_use_spatial_chunks() if (dock and dock.has_method("should_use_spatial_chunks")) else false
 	var use_csg = dock.should_use_csg_buildings() if (dock and dock.has_method("should_use_csg_buildings")) else false
-	_generate_3d_scene(parsed.get("buildings", []), parsed.get("roads", []), create_colliders, use_spatial_chunks, use_csg)
+	var spawn_player = dock.should_spawn_player() if (dock and dock.has_method("should_spawn_player")) else true
+	_generate_3d_scene(parsed.get("buildings", []), parsed.get("roads", []), create_colliders, use_spatial_chunks, use_csg, parsed.get("pois", []), spawn_player)
 
-func _generate_3d_scene(buildings: Array, roads: Array, create_colliders: bool = true, use_spatial_chunks: bool = false, use_csg: bool = false) -> void:
+func _generate_3d_scene(buildings: Array, roads: Array, create_colliders: bool = true, use_spatial_chunks: bool = false, use_csg: bool = false, pois: Array = [], spawn_player: bool = true) -> void:
 	if buildings.is_empty():
 		push_warning("[OSM Importer] No buildings found to generate.")
 		if dock and dock.has_method("log_generation_error"):
@@ -148,7 +150,7 @@ func _generate_3d_scene(buildings: Array, roads: Array, create_colliders: bool =
 		return
 
 	var scene_path = "res://city_viewer.tscn"
-	var city_root = OSMSceneBuilderClass.build_city_scene(buildings, roads, create_colliders, false, use_spatial_chunks, 500.0, 1500.0, use_csg)
+	var city_root = OSMSceneBuilderClass.build_city_scene(buildings, roads, create_colliders, false, use_spatial_chunks, 500.0, 1500.0, use_csg, pois, spawn_player)
 	var err = OSMSceneBuilderClass.save_city_scene(city_root, scene_path)
 	if err != OK:
 		var err_msg = "Failed to save city scene to " + scene_path + " (code: " + str(err) + ")"

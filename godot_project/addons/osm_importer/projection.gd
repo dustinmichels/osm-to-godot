@@ -33,6 +33,10 @@ func project(lat: float, lon: float, elevation: float = 0.0) -> Vector3:
 	var z = -EARTH_RADIUS * d_lat_rad
 	return Vector3(x, elevation, z)
 
+## Alias for project()
+func project_wgs84_to_local(lat: float, lon: float, elevation: float = 0.0) -> Vector3:
+	return project(lat, lon, elevation)
+
 ## Projects WGS84 (lat, lon) to 2D local tangent plane:
 ## x = East (meters), y = North (meters)
 func project_2d(lat: float, lon: float) -> Vector2:

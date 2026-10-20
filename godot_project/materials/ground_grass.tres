@@ -1,0 +1,38 @@
+[gd_resource type="StandardMaterial3D" format=3]
+
+[sub_resource type="Gradient" id="Gradient_5e5tn"]
+offsets = PackedFloat32Array(0, 0.35, 0.7, 1)
+colors = PackedColorArray(0.2, 0.4, 0.14, 1, 0.28, 0.5, 0.2, 1, 0.35, 0.58, 0.25, 1, 0.24, 0.45, 0.16, 1)
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_742j3"]
+noise_type = 0
+frequency = 0.05
+fractal_octaves = 3
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_dxl82"]
+noise = SubResource("FastNoiseLite_742j3")
+color_ramp = SubResource("Gradient_5e5tn")
+seamless = true
+
+[sub_resource type="FastNoiseLite" id="FastNoiseLite_ckjqj"]
+noise_type = 2
+frequency = 0.08
+
+[sub_resource type="NoiseTexture2D" id="NoiseTexture2D_6pdse"]
+noise = SubResource("FastNoiseLite_ckjqj")
+seamless = true
+as_normal_map = true
+bump_strength = 0.6
+
+[resource]
+resource_name = "GroundGrassMaterial"
+cull_mode = 2
+albedo_color = Color(1, 1, 1, 1)
+albedo_texture = SubResource("NoiseTexture2D_dxl82")
+roughness = 0.9
+normal_enabled = true
+normal_scale = 0.4
+normal_texture = SubResource("NoiseTexture2D_6pdse")
+uv1_scale = Vector3(0.25, 0.25, 0.25)
+uv1_triplanar = true
+uv1_world_triplanar = true

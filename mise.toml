@@ -7,8 +7,11 @@ run = "cd web && bun run build:addon"
 
 [tasks.test]
 description = "Run headless Godot test suite"
-run = "godot --headless --path godot_project -s res://test_importer_headless.gd"
+run = "godot --headless --path godot_project -s res://test_importer_headless.gd && godot --headless --path godot_project -s res://test_player_character.gd"
 
+[tasks.test-character]
+description = "Run 3D player character verification tests"
+run = "godot --headless --path godot_project -s res://test_player_character.gd"
 [tasks.test-web]
 description = "Run web unit tests"
 run = "cd web && bun test"

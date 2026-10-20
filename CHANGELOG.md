@@ -28,6 +28,12 @@
 - **Procedural PBR Materials**: StandardMaterial3D presets for roads, sidewalks, bike lanes, and walls with triplanar mapping.
 - **Visualization Scene**: Default viewer scene (`city_viewer.tscn`) configured with directional sunlight, SSAO environment, and WASD fly/orbit inspection camera.
 
+### 3D Character Exploration
+- **Rigged Human Character Model**: CC0 3D human mannequin model by Quaternius in Blender (`human_character.blend`) and glTF binary (`human_character.glb`) format, complete with a 66-bone humanoid skeleton and locomotion animations (`Idle_A`, `Walk`, `Jog`, `Sprint`, `Jump_Start`, `Jump_air`, `Jump_Land`, `Crouch`, `Dance`).
+- **Player Controller (`character.gd` & `character.tscn`)**: `CharacterBody3D` player with capsule collider, `SpringArm3D` collision-aware third-person camera rig, smooth turning, gravity, jumping, sprinting, on-screen controls HUD, and fall respawn.
+- **Scene Spawning & Exploration**: Automatic plopping of the player character onto the nearest street or central plaza at ground level upon OSM import, continuous walkable ground collision plane, and two-way camera mode toggling ([V] / [Tab]) between third-person player view and overhead free inspection camera.
+- **Test Suite**: Automated headless test suite (`test_player_character.gd`) validating node hierarchy, bone count, animations, spawn position, scene serialization, and physics simulation.
+
 ### Performance Optimization & Batching
 - **Draw Call Reduction**: Material batching consolidating roads, bike lanes, and building walls into shared multi-surface ArrayMeshes (reducing draw calls from >8,000 to <25).
 - **Spatial Chunking**: 2D spatial grid partitioning (500m × 500m cells) supporting distance-based visibility and LOD culling.

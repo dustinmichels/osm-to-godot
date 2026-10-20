@@ -63,6 +63,7 @@ export interface ExportMetadata {
     totalElements: number
     highwaysCount: number
     buildingsCount: number
+    poisCount?: number
     relationsCount: number
   }
 }
@@ -78,6 +79,21 @@ const OVERPASS_ENDPOINTS = [
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
 ]
 
+export function isPoiTags(tags?: Record<string, string>): boolean {
+  if (!tags) return false
+  return Boolean(
+    tags.amenity ||
+    tags.shop ||
+    tags.tourism ||
+    tags.leisure ||
+    tags.office ||
+    tags.historic ||
+    tags.healthcare ||
+    tags.craft ||
+    (tags.name && !tags.highway && !tags.building)
+  )
+}
+
 export function buildOverpassQL(bbox: BoundingBox, timeoutSeconds = 30): string {
   // Overpass expects bbox as (south, west, north, east)
   const s = bbox.south.toFixed(6)
@@ -91,6 +107,14 @@ export function buildOverpassQL(bbox: BoundingBox, timeoutSeconds = 30): string 
   way["highway"](${bboxStr});
   way["building"](${bboxStr});
   relation["building"](${bboxStr});
+  node["amenity"](${bboxStr});
+  node["shop"](${bboxStr});
+  node["tourism"](${bboxStr});
+  node["leisure"](${bboxStr});
+  node["office"](${bboxStr});
+  node["historic"](${bboxStr});
+  node["healthcare"](${bboxStr});
+  node["craft"](${bboxStr});
 );
 out body geom;`
 }
@@ -184,6 +208,7 @@ function parseOsmXmlToElements(xmlString: string): OSMElement[] {
     const doc = parser.parseFromString(xmlString, 'application/xml')
 
     const nodesMap = new Map<number, { lat: number; lon: number }>()
+    const poiNodes: OSMElement[] = []
     const nodeEls = doc.getElementsByTagName('node')
     for (let i = 0; i < nodeEls.length; i++) {
       const el = nodeEls[i]!
@@ -192,10 +217,29 @@ function parseOsmXmlToElements(xmlString: string): OSMElement[] {
       const lon = parseFloat(el.getAttribute('lon') || '0')
       if (id) {
         nodesMap.set(id, { lat, lon })
+        const tags: Record<string, string> = {}
+        const children = el.children
+        for (let j = 0; j < children.length; j++) {
+          const child = children[j]!
+          if (child.tagName === 'tag') {
+            const k = child.getAttribute('k')
+            const v = child.getAttribute('v')
+            if (k && v) tags[k] = v
+          }
+        }
+        if (isPoiTags(tags)) {
+          poiNodes.push({
+            type: 'node',
+            id,
+            lat,
+            lon,
+            tags
+          })
+        }
       }
     }
 
-    const result: OSMElement[] = []
+    const result: OSMElement[] = [...poiNodes]
 
     const wayEls = doc.getElementsByTagName('way')
     for (let i = 0; i < wayEls.length; i++) {
@@ -279,7 +323,31 @@ function parseOsmXmlToElements(xmlString: string): OSMElement[] {
     nodesMap.set(id, { lat, lon })
   }
 
-  const result: OSMElement[] = []
+  const poiNodes: OSMElement[] = []
+  const nodeBlockRegex = /<node\s+[^>]*\bid="(\d+)"[^>]*\blat="([^"]+)"[^>]*\blon="([^"]+)"[^>]*>([\s\S]*?)<\/node>/g
+  while ((match = nodeBlockRegex.exec(xmlString)) !== null) {
+    const id = parseInt(match[1]!, 10)
+    const lat = parseFloat(match[2]!)
+    const lon = parseFloat(match[3]!)
+    const inner = match[4]!
+    const tags: Record<string, string> = {}
+    const tagRegex = /<tag\s+[^>]*k="([^"]+)"[^>]*v="([^"]+)"/g
+    let tMatch: RegExpExecArray | null
+    while ((tMatch = tagRegex.exec(inner)) !== null) {
+      tags[tMatch[1]!] = tMatch[2]!
+    }
+    if (isPoiTags(tags)) {
+      poiNodes.push({
+        type: 'node',
+        id,
+        lat,
+        lon,
+        tags
+      })
+    }
+  }
+
+  const result: OSMElement[] = [...poiNodes]
   const wayBlockRegex = /<way\s+[^>]*\bid="(\d+)"[^>]*>([\s\S]*?)<\/way>/g
   while ((match = wayBlockRegex.exec(xmlString)) !== null) {
     const id = parseInt(match[1]!, 10)

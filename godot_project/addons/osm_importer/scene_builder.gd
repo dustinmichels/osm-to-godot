@@ -11,7 +11,7 @@ const ChunkManagerClass = preload("chunk_manager.gd")
 
 
 ## Build a complete CityRoot Node3D hierarchy with lighting, environment, camera, buildings, and roads
-static func build_city_scene(buildings_data: Array, roads_data: Array = [], create_colliders: bool = true, batched_buildings: bool = false, use_spatial_chunks: bool = false, chunk_size: float = 500.0, lod_max_distance: float = 1500.0, use_csg_buildings: bool = false) -> Node3D:
+static func build_city_scene(buildings_data: Array, roads_data: Array = [], create_colliders: bool = true, batched_buildings: bool = false, use_spatial_chunks: bool = false, chunk_size: float = 500.0, lod_max_distance: float = 1500.0, use_csg_buildings: bool = false, pois_data: Array = [], spawn_player: bool = true, create_ground: bool = true) -> Node3D:
 	var city_root = Node3D.new()
 	city_root.name = "CityRoot"
 
@@ -61,24 +61,150 @@ static func build_city_scene(buildings_data: Array, roads_data: Array = [], crea
 		buildings_root.name = "Buildings"
 		city_root.add_child(buildings_root)
 
-	# 5. Inspection Camera with Fly-through Controller
-	var camera = Camera3D.new()
-	camera.name = "Camera3D"
-	camera.current = true
-	camera.set_script(CameraControllerScript)
+	# POIs (Points of Interest)
+	if not pois_data.is_empty():
+		var pois_root = Node3D.new()
+		pois_root.name = "POIs"
+		for poi in pois_data:
+			if poi is Dictionary:
+				var marker = Marker3D.new()
+				var p_name = str(poi.get("name", "")).strip_edges()
+				if p_name.is_empty():
+					p_name = "POI_" + str(poi.get("id", "unknown"))
+				marker.name = BuildingBuilderClass.sanitize_node_name(p_name)
+				marker.position = poi.get("position", Vector3.ZERO)
+				var p_id = poi.get("id")
+				if p_id != null:
+					marker.set_meta("osm_id", p_id)
+				var p_disp = str(poi.get("name", "")).strip_edges()
+				if not p_disp.is_empty():
+					marker.set_meta("osm_name", p_disp)
+				var p_tags: Dictionary = poi.get("tags", {})
+				if not p_tags.is_empty():
+					marker.set_meta("osm_tags", p_tags)
+				pois_root.add_child(marker, true)
+		city_root.add_child(pois_root)
 
-	# Frame camera to overview the buildings
+	# Calculate bounds of buildings or streets
 	var aabb = calculate_bounds(chunked_world if chunked_world != null else buildings_root)
+	if aabb.size.length_squared() < 0.1 and streets != null:
+		aabb = calculate_bounds(streets)
 	var center = aabb.get_center() if aabb.size.length() > 0.1 else Vector3.ZERO
 	var span = maxf(aabb.size.x, aabb.size.z)
 	if span < 50.0:
 		span = 120.0
 
+	# 5. Ground Plane with Grassy Texture (and optional static collider)
+	if create_ground:
+		var ground = _create_ground_node(aabb, create_colliders)
+		city_root.add_child(ground)
+
+	# 6. Inspection Camera with Fly-through Controller
+	var camera = Camera3D.new()
+	camera.name = "Camera3D"
+	camera.current = not spawn_player
+	camera.set_script(CameraControllerScript)
+
 	var cam_pos = center + Vector3(0.0, span * 0.65 + 35.0, span * 0.75 + 45.0)
 	camera.look_at_from_position(cam_pos, center, Vector3.UP)
 	city_root.add_child(camera)
 
+	# 7. Player Character for 3D Scene Exploration
+	if spawn_player:
+		var spawn_pos = _determine_player_spawn_point(roads_data, buildings_data, center)
+		var player = _create_player_node(spawn_pos)
+		if player:
+			city_root.add_child(player)
+		else:
+			camera.current = true
+
 	return city_root
+
+## Create a walkable ground surface and static collider with a grassy texture
+static func _create_ground_node(scene_bounds: AABB, create_colliders: bool = true) -> Node3D:
+	var ground_root = Node3D.new()
+	ground_root.name = "Ground"
+
+	var half_size = maxf(maxf(scene_bounds.size.x, scene_bounds.size.z) * 1.5, 1000.0)
+	var center = scene_bounds.get_center() if scene_bounds.size.length_squared() > 0.1 else Vector3.ZERO
+
+	if create_colliders:
+		var sb = StaticBody3D.new()
+		sb.name = "GroundCollision"
+		ground_root.add_child(sb)
+
+		var cs = CollisionShape3D.new()
+		cs.name = "CollisionShape3D"
+		var box_shape = BoxShape3D.new()
+		box_shape.size = Vector3(half_size * 2.0, 1.0, half_size * 2.0)
+		cs.shape = box_shape
+		cs.position = Vector3(center.x, -0.5, center.z)
+		sb.add_child(cs)
+
+	var mi = MeshInstance3D.new()
+	mi.name = "GroundMesh"
+	var plane_mesh = PlaneMesh.new()
+	plane_mesh.size = Vector2(half_size * 2.0, half_size * 2.0)
+	mi.mesh = plane_mesh
+	mi.position = Vector3(center.x, 0.0, center.z)
+
+	var ground_mat = _get_ground_material()
+	mi.material_override = ground_mat
+	ground_root.add_child(mi)
+
+	return ground_root
+
+## Get or fallback create the grassy ground material
+static func _get_ground_material() -> StandardMaterial3D:
+	const GROUND_GRASS_MATERIAL_PATH = "res://materials/ground_grass.tres"
+	if ResourceLoader.exists(GROUND_GRASS_MATERIAL_PATH):
+		var res_mat = load(GROUND_GRASS_MATERIAL_PATH) as StandardMaterial3D
+		if res_mat != null:
+			return res_mat
+
+	var mat = StandardMaterial3D.new()
+	mat.resource_name = "GroundGrassMaterial"
+	mat.albedo_color = Color(0.28, 0.48, 0.22, 1.0)
+	mat.roughness = 0.9
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return mat
+
+## Find a suitable spawn point for the player near the center of the scene
+static func _determine_player_spawn_point(roads_data: Array, buildings_data: Array, center: Vector3) -> Vector3:
+	var best_pos = center + Vector3(0.0, 0.2, 0.0)
+	var min_dist_sq = INF
+
+	# 1. Prefer spawning on a road near the bounding box center
+	if not roads_data.is_empty():
+		for road in roads_data:
+			var pts = road.get("points", [])
+			for pt in pts:
+				var dist_sq = Vector2(pt.x - center.x, pt.z - center.z).length_squared()
+				if dist_sq < min_dist_sq:
+					min_dist_sq = dist_sq
+					best_pos = Vector3(pt.x, maxf(pt.y, 0.0) + 0.2, pt.z)
+	# 2. If no roads, spawn in an open area near the center
+	elif not buildings_data.is_empty():
+		best_pos = Vector3(center.x, 0.2, center.z)
+
+	return best_pos
+
+## Instantiate and initialize the player character node
+static func _create_player_node(spawn_pos: Vector3) -> CharacterBody3D:
+	var char_scene_path = "res://character/character.tscn"
+	var player: CharacterBody3D = null
+	if ResourceLoader.exists(char_scene_path):
+		var char_scene = load(char_scene_path)
+		if char_scene:
+			player = char_scene.instantiate() as CharacterBody3D
+
+	if player:
+		player.position = spawn_pos
+		player.set("spawn_position", spawn_pos)
+		var cam = player.find_child("Camera3D", true, false)
+		if cam is Camera3D:
+			cam.current = true
+	return player
 
 ## Calculate combined AABB of all MeshInstance3D nodes under a root
 static func calculate_bounds(root: Node3D) -> AABB:

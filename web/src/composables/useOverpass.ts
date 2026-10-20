@@ -5,7 +5,8 @@ import {
   fetchOsmApiFallback,
   type OSMElement,
   type OSMExportPayload,
-  type ExportMetadata
+  type ExportMetadata,
+  isPoiTags
 } from '@/services/overpass'
 import medfordYExport from '@/data/medford_y_export.json'
 
@@ -128,11 +129,13 @@ export function useOverpass() {
       let highwaysCount = 0
       let buildingsCount = 0
       let relationsCount = 0
+      let poisCount = 0
 
       for (const el of elements) {
         if (el.tags?.highway) highwaysCount++
         if (el.tags?.building) buildingsCount++
         if (el.type === 'relation') relationsCount++
+        if (el.type === 'node' && isPoiTags(el.tags)) poisCount++
       }
 
       const metadata: ExportMetadata = {
@@ -170,6 +173,7 @@ export function useOverpass() {
           totalElements: elements.length,
           highwaysCount,
           buildingsCount,
+          poisCount,
           relationsCount
         }
       }

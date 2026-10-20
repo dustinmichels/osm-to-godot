@@ -14,7 +14,8 @@ const FIXTURES: Array[String] = [
 	"../tests/fixtures/bike_infrastructure.json",
 	"../tests/fixtures/complex_buildings.json",
 	"../tests/fixtures/bridge_overpass.json",
-	"../tests/fixtures/sample_city_export.json"
+	"../tests/fixtures/sample_city_export.json",
+	"../tests/fixtures/medford_y_export.json"
 ]
 
 func _init() -> void:
@@ -34,9 +35,18 @@ func _init() -> void:
 		else:
 			printerr("FAIL: " + fixture_path)
 			
+	print("\n--- Verifying POI & Address Fallback Naming ---")
+	var naming_ok = verify_poi_and_address_naming()
+	if naming_ok:
+		print("PASS: POI and address fallback naming verified")
+	else:
+		printerr("FAIL: POI and address fallback naming verification failed")
+		quit(1)
+		return
+
 	print("\n==================================================")
-	if passed_tests == total_tests:
-		print("ALL " + str(total_tests) + " FIXTURES VERIFIED SUCCESSFULLY! (100% PASS)")
+	if passed_tests == total_tests and naming_ok:
+		print("ALL " + str(total_tests) + " FIXTURES & NAMING VERIFIED SUCCESSFULLY! (100% PASS)")
 		print("==================================================")
 		quit(0)
 	else:
@@ -69,13 +79,35 @@ func verify_fixture(fixture_path: String) -> bool:
 		
 	var roads: Array = parse_res.get("roads", [])
 	var buildings: Array = parse_res.get("buildings", [])
-	print("  Parsed: roads = ", roads.size(), ", buildings = ", buildings.size())
+	var pois: Array = parse_res.get("pois", [])
+	print("  Parsed: roads = ", roads.size(), ", buildings = ", buildings.size(), ", pois = ", pois.size())
 	
-	var city_root = OSMSceneBuilderClass.build_city_scene(buildings, roads, true, false, false)
+	var city_root = OSMSceneBuilderClass.build_city_scene(buildings, roads, true, false, false, 500.0, 1500.0, false, pois)
 	if city_root == null:
 		printerr("  [FAIL] SceneBuilder returned null root node")
 		return false
-		
+	# Verify ground layer exists with PlaneMesh and grassy texture
+	var ground = city_root.get_node_or_null("Ground")
+	if ground == null:
+		printerr("  [FAIL] Ground node missing from CityRoot")
+		city_root.free()
+		return false
+	var ground_mesh = ground.get_node_or_null("GroundMesh") as MeshInstance3D
+	if ground_mesh == null or not (ground_mesh.mesh is PlaneMesh):
+		printerr("  [FAIL] GroundMesh missing or not a PlaneMesh")
+		city_root.free()
+		return false
+	var ground_mat = ground_mesh.material_override as StandardMaterial3D
+	if ground_mat == null or ground_mat.albedo_texture == null:
+		printerr("  [FAIL] GroundMesh material missing or lacks grassy texture")
+		city_root.free()
+		return false
+	var ground_col = ground.get_node_or_null("GroundCollision") as StaticBody3D
+	if ground_col == null or ground_col.get_node_or_null("CollisionShape3D") == null:
+		printerr("  [FAIL] Ground collider missing when create_colliders=true")
+		city_root.free()
+		return false
+
 	# Find all MeshInstance3D nodes in the generated scene
 	var mesh_instances: Array[MeshInstance3D] = []
 	_collect_mesh_instances(city_root, mesh_instances)
@@ -168,3 +200,77 @@ func _collect_csg_instances(node: Node, out_list: Array[CSGPolygon3D]) -> void:
 		out_list.append(node)
 	for child in node.get_children():
 		_collect_csg_instances(child, out_list)
+func verify_poi_and_address_naming() -> bool:
+	var parser = OSMParserClass.new()
+	var parse_res = parser.parse_file("../tests/fixtures/medford_y_export.json")
+	if parse_res.has("error"):
+		printerr("  [FAIL] Could not load medford_y_export.json: ", parse_res["error"])
+		return false
+
+	var pois: Array = parse_res.get("pois", [])
+	if pois.size() != 9:
+		printerr("  [FAIL] Expected 9 POIs in medford_y_export, got: ", pois.size())
+		return false
+	print("  Extracted ", pois.size(), " POI nodes.")
+
+	var buildings: Array = parse_res.get("buildings", [])
+	var b_root = BuildingBuilderClass.build_buildings_node(buildings, true, false, false)
+	if b_root == null:
+		printerr("  [FAIL] Failed to build buildings node")
+		return false
+
+	var found_names: Dictionary = {}
+	for child in b_root.get_children():
+		found_names[child.name] = true
+
+	# Check Dunkin' (named directly in OSM)
+	if not found_names.has("Dunkin'"):
+		printerr("  [FAIL] Missing 'Dunkin'' building node")
+		b_root.free()
+		return false
+
+	# Check POI fallback: 7-Eleven
+	if not found_names.has("7-Eleven"):
+		printerr("  [FAIL] Missing '7-Eleven' building node (from POI)")
+		b_root.free()
+		return false
+
+	# Check POI fallback: Circle K
+	if not found_names.has("Circle K"):
+		printerr("  [FAIL] Missing 'Circle K' building node (from POI)")
+		b_root.free()
+		return false
+
+	# Check address fallback: 9 Emerson Street
+	if not found_names.has("9 Emerson Street"):
+		printerr("  [FAIL] Missing '9 Emerson Street' building node (from address)")
+		b_root.free()
+		return false
+
+	# Check address fallback: 20 Thomas Street
+	if not found_names.has("20 Thomas Street"):
+		printerr("  [FAIL] Missing '20 Thomas Street' building node (from address)")
+		b_root.free()
+		return false
+
+	# Check metadata on 7-Eleven node
+	var seven_eleven = b_root.get_node_or_null("7-Eleven") as MeshInstance3D
+	if seven_eleven == null or not seven_eleven.has_meta("osm_name"):
+		printerr("  [FAIL] Missing osm_name metadata on 7-Eleven node")
+		b_root.free()
+		return false
+
+	print("  Verified building names: Dunkin', 7-Eleven, Circle K, 9 Emerson Street, 20 Thomas Street.")
+	b_root.free()
+
+	# Also verify SceneBuilder creates POIs group with Marker3D children
+	var city_root = OSMSceneBuilderClass.build_city_scene(buildings, [], false, false, false, 500.0, 1500.0, false, pois)
+	var pois_node = city_root.get_node_or_null("POIs")
+	if pois_node == null or pois_node.get_child_count() != 9:
+		printerr("  [FAIL] Expected POIs node with 9 Marker3D children in CityRoot")
+		city_root.free()
+		return false
+	print("  Verified SceneBuilder POIs node with 9 children.")
+	city_root.free()
+
+	return true

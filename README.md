@@ -43,8 +43,28 @@ Once the **OSM Importer** plugin is enabled:
 2. Click **🌐 Open Web Selector**. The plugin opens the embedded MapLibre web app in your default browser (running on `http://127.0.0.1:8080`).
 3. Pan or search for an area, drag a bounding box, and click **⚡ Send to Godot**.
 4. The web app transfers the data directly over HTTP into Godot. The plugin saves it to `res://data/osm_export.json`, automatically generates the 3D city scene (`res://city_viewer.tscn`) with extruded buildings, roof triangulation, PBR materials, and physics colliders, and opens it directly in the 3D editor viewport.
-5. You can also re-generate at any time by clicking **🔨 Generate 3D City** in the bottom panel dock, or press **F5** to run the 3D inspection viewer (Left/Right-click drag to look, Mouse Wheel to zoom, WASD / Arrows to fly, [H] to toggle the HUD).
+5. You can also re-generate at any time by clicking **🔨 Generate 3D City** in the bottom panel dock, or press **F5** to run the 3D scene directly. The player character is automatically placed on a street ready for immediate exploration.
 
+### 3D Character Exploration
+
+A rigged human character model (`godot_project/character/`) is included to let you explore imported cities on foot from a third-person perspective:
+
+* **Human Character Model (`human_character.blend` & `human_character.glb`):**
+  * 66-bone humanoid skeleton armature and mannequin mesh (CC0 Public Domain by Quaternius).
+  * Full animation set: `Idle_A`, `Walk`, `Jog`, `Sprint`, `Jump_Start`, `Jump_air`, `Jump_Land`, `Crouch`, `Dance`.
+  * Configured as a Godot `CharacterBody3D` (`res://character/character.tscn`) with a capsule collision shape and collision-detecting `SpringArm3D` camera rig.
+* **Automatic Placement:**
+  * When the 3D city scene is generated or imported from OSM, the player is automatically plopped onto a street or open area near the center of the bounding box at ground level.
+  * A continuous walkable ground collision plane is generated under the city so you can walk seamlessly across streets, sidewalks, and plazas.
+* **Controls:**
+  * **⌨️ Arrow Keys or W / A / S / D:** Walk forward, back, left, right (movement is relative to camera view).
+  * **🚀 Shift:** Sprint (accelerates and plays sprint animation).
+  * **⬆️ Space:** Jump.
+  * **🖱️ Left / Right Mouse Drag:** Orbit camera 360° around the character.
+  * **🔄 Scroll Wheel:** Zoom third-person camera in and out.
+  * **📷 [V] / [Tab]:** Seamlessly toggle between Third-Person Character View and Overhead Free Fly Camera.
+  * **ℹ️ [H]:** Toggle on-screen controls HUD.
+  * **Esc:** Release mouse cursor capture.
 ### Building Generation Modes
 
 * **Extrude 2D Footprints (`CSGPolygon3D`) — Recommended for Small Areas & Prototyping:**

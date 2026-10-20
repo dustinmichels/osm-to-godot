@@ -34,6 +34,11 @@ func _ready() -> void:
 		_setup_hud()
 
 func _input(event: InputEvent) -> void:
+	if not current:
+		if event is InputEventKey and event.pressed and (event.keycode == KEY_V or event.keycode == KEY_TAB):
+			_switch_to_player_camera()
+		return
+
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT or event.button_index == MOUSE_BUTTON_RIGHT:
 			if event.pressed:
@@ -82,8 +87,13 @@ func _input(event: InputEvent) -> void:
 				_active_button = 0
 		elif event.keycode == KEY_H:
 			_toggle_hud()
+		elif event.keycode == KEY_V or event.keycode == KEY_TAB:
+			_switch_to_player_camera()
 
 func _process(delta: float) -> void:
+	if not current:
+		return
+
 	var speed = move_speed
 	if Input.is_key_pressed(KEY_SHIFT):
 		speed *= fast_speed_multiplier
@@ -156,6 +166,7 @@ func _setup_hud() -> void:
 		"⬆️ Space / E : Move up",
 		"⬇️ Q / C : Move down",
 		"🖐️ Middle Drag : Pan view",
+		"🚶 [V] / [Tab] : Switch to Player character",
 		"ℹ️ [H] : Toggle this guide"
 	]
 
@@ -170,3 +181,19 @@ func _setup_hud() -> void:
 func _toggle_hud() -> void:
 	if _hud_layer:
 		_hud_layer.visible = not _hud_layer.visible
+
+func _switch_to_player_camera() -> void:
+	var root = get_tree().current_scene if get_tree() else null
+	if not root:
+		root = get_parent()
+	if root:
+		var player = root.find_child("Player", true, false)
+		if player:
+			var player_cam = player.find_child("Camera3D", true, false)
+			if player_cam is Camera3D:
+				self.current = false
+				player_cam.current = true
+				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+				_mouse_captured = false
+				if _hud_layer:
+					_hud_layer.visible = false

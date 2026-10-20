@@ -36,10 +36,11 @@
       }
     },
     "stats": {
-      "totalElements": 110,
+      "totalElements": 119,
       "highwaysCount": 63,
       "buildingsCount": 47,
-      "relationsCount": 0
+      "relationsCount": 0,
+      "poisCount": 9
     }
   },
   "elements": [
@@ -6511,6 +6512,99 @@
           "lon": -71.1103343
         }
       ]
+    },
+    {
+      "type": "node",
+      "id": 257493859,
+      "lat": 42.4158105,
+      "lon": -71.1101517,
+      "tags": {
+        "amenity": "police",
+        "name": "Medford Police Department"
+      }
+    },
+    {
+      "type": "node",
+      "id": 257494469,
+      "lat": 42.4154502,
+      "lon": -71.1100739,
+      "tags": {
+        "amenity": "fire_station",
+        "name": "Medford Fire Department"
+      }
+    },
+    {
+      "type": "node",
+      "id": 10880742357,
+      "lat": 42.4153768,
+      "lon": -71.1110535,
+      "tags": {
+        "name": "Miracle-Ear",
+        "shop": "hearing_aids"
+      }
+    },
+    {
+      "type": "node",
+      "id": 10880780385,
+      "lat": 42.4151521,
+      "lon": -71.1109698,
+      "tags": {
+        "name": "7-Eleven",
+        "shop": "convenience"
+      }
+    },
+    {
+      "type": "node",
+      "id": 10880781166,
+      "lat": 42.4146204,
+      "lon": -71.1103436,
+      "tags": {
+        "name": "Circle K",
+        "shop": "convenience"
+      }
+    },
+    {
+      "type": "node",
+      "id": 12995965920,
+      "lat": 42.4150312,
+      "lon": -71.1112711,
+      "tags": {
+        "amenity": "clinic",
+        "healthcare": "clinic",
+        "name": "Mass General Brigham Community Physicians - Medford"
+      }
+    },
+    {
+      "type": "node",
+      "id": 13430704233,
+      "lat": 42.4154329,
+      "lon": -71.1108309,
+      "tags": {
+        "amenity": "hospital",
+        "healthcare": "hospital",
+        "name": "Mass General Brigham (Medford, Cardiology)"
+      }
+    },
+    {
+      "type": "node",
+      "id": 13992269099,
+      "lat": 42.4145661,
+      "lon": -71.1096118,
+      "tags": {
+        "name": "Volsar, Inc.",
+        "shop": "car_repair"
+      }
+    },
+    {
+      "type": "node",
+      "id": 14211945322,
+      "lat": 42.4159286,
+      "lon": -71.1110889,
+      "tags": {
+        "amenity": "dentist",
+        "healthcare": "dentist",
+        "name": "Medford Main Street Dental"
+      }
     }
   ]
 }

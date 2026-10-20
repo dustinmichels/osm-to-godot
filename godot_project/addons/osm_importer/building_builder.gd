@@ -479,7 +479,7 @@ static func create_building_mesh(mesh_data: Dictionary) -> ArrayMesh:
 		
 	return mesh
 
-## Extract human-readable building name from OSM tags if present.
+## Extract human-readable building name from OSM tags or POIs if present.
 static func get_building_display_name(building: Dictionary) -> String:
 	var tags: Dictionary = building.get("tags", {})
 	if tags.has("name") and not str(tags.get("name")).strip_edges().is_empty():
@@ -490,8 +490,35 @@ static func get_building_display_name(building: Dictionary) -> String:
 		return str(tags.get("addr:housename")).strip_edges()
 	if tags.has("brand") and not str(tags.get("brand")).strip_edges().is_empty():
 		return str(tags.get("brand")).strip_edges()
-	return ""
 
+	# Associated POI name if a POI node falls inside this building footprint
+	if building.has("pois"):
+		var pois: Array = building.get("pois", [])
+		for poi in pois:
+			if poi is Dictionary:
+				var p_name = str(poi.get("name", "")).strip_edges()
+				if p_name.is_empty():
+					var p_tags: Dictionary = poi.get("tags", {})
+					p_name = str(p_tags.get("name", p_tags.get("brand", ""))).strip_edges()
+				if not p_name.is_empty():
+					return p_name
+
+	# Fallback to street address
+	var housenumber = str(tags.get("addr:housenumber", "")).strip_edges()
+	var street = str(tags.get("addr:street", "")).strip_edges()
+	if not housenumber.is_empty() and not street.is_empty():
+		return housenumber + " " + street
+	elif not street.is_empty():
+		return street
+	elif not housenumber.is_empty():
+		return "No. " + housenumber
+
+	# Fallback to specific building type if not generic
+	var b_type = str(tags.get("building", "")).strip_edges().to_lower()
+	if not b_type.is_empty() and b_type != "yes" and b_type != "no" and b_type != "roof" and b_type != "true":
+		return b_type.capitalize().replace("_", " ")
+
+	return ""
 ## Determine a clean node name for a building model in the Godot scene hierarchy.
 ## Uses the building's OSM name if available, falling back to "Building_<id>".
 static func get_building_node_name(building: Dictionary) -> String:
@@ -527,9 +554,16 @@ static func create_building_node(building: Dictionary, create_collider: bool = t
 	var b_name = get_building_display_name(building)
 	if not b_name.is_empty():
 		instance.set_meta("osm_name", b_name)
+	var housenumber = str(tags.get("addr:housenumber", "")).strip_edges()
+	var street = str(tags.get("addr:street", "")).strip_edges()
+	if not housenumber.is_empty() and not street.is_empty():
+		instance.set_meta("osm_address", housenumber + " " + street)
+	elif not street.is_empty():
+		instance.set_meta("osm_address", street)
+	if building.has("pois") and building["pois"].size() > 0:
+		instance.set_meta("osm_pois", building["pois"])
 	if not tags.is_empty():
 		instance.set_meta("osm_tags", tags)
-	
 	if create_collider and mesh.get_surface_count() > 0:
 		var static_body = StaticBody3D.new()
 		static_body.name = "StaticBody3D"
@@ -626,9 +660,16 @@ static func create_csg_building_node(building: Dictionary, create_collider: bool
 		var b_name = get_building_display_name(building)
 		if not b_name.is_empty():
 			csg.set_meta("osm_name", b_name)
+		var housenumber = str(tags.get("addr:housenumber", "")).strip_edges()
+		var street = str(tags.get("addr:street", "")).strip_edges()
+		if not housenumber.is_empty() and not street.is_empty():
+			csg.set_meta("osm_address", housenumber + " " + street)
+		elif not street.is_empty():
+			csg.set_meta("osm_address", street)
+		if building.has("pois") and building["pois"].size() > 0:
+			csg.set_meta("osm_pois", building["pois"])
 		if not tags.is_empty():
 			csg.set_meta("osm_tags", tags)
-			
 		created_nodes.append(csg)
 		
 	if created_nodes.is_empty():
