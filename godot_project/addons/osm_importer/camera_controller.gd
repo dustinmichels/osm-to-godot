@@ -27,15 +27,21 @@ var _yaw: float = 0.0
 var _pitch: float = 0.0
 var _hud_layer: CanvasLayer = null
 
+
 func _ready() -> void:
 	_yaw = rotation.y
 	_pitch = rotation.x
 	if show_hud:
 		_setup_hud()
 
+
 func _input(event: InputEvent) -> void:
 	if not current:
-		if event is InputEventKey and event.pressed and (event.keycode == KEY_V or event.keycode == KEY_TAB):
+		if (
+			event is InputEventKey
+			and event.pressed
+			and (event.keycode == KEY_V or event.keycode == KEY_TAB)
+		):
 			_switch_to_player_camera()
 		return
 
@@ -75,7 +81,9 @@ func _input(event: InputEvent) -> void:
 			global_position += transform.basis.y * (event.relative.y * pan_sensitivity * pan_mult)
 		else:
 			_yaw -= event.relative.x * look_sensitivity
-			_pitch = clampf(_pitch - event.relative.y * look_sensitivity, -deg_to_rad(89.0), deg_to_rad(89.0))
+			_pitch = clampf(
+				_pitch - event.relative.y * look_sensitivity, -deg_to_rad(89.0), deg_to_rad(89.0)
+			)
 			rotation = Vector3(_pitch, _yaw, 0.0)
 
 	elif event is InputEventKey and event.pressed:
@@ -89,6 +97,7 @@ func _input(event: InputEvent) -> void:
 			_toggle_hud()
 		elif event.keycode == KEY_V or event.keycode == KEY_TAB:
 			_switch_to_player_camera()
+
 
 func _process(delta: float) -> void:
 	if not current:
@@ -115,6 +124,7 @@ func _process(delta: float) -> void:
 	if dir.length_squared() > 0.001:
 		dir = dir.normalized()
 		global_position += dir * speed * delta
+
 
 func _setup_hud() -> void:
 	if Engine.is_editor_hint():
@@ -178,9 +188,11 @@ func _setup_hud() -> void:
 		lbl.add_theme_color_override("font_color", Color(0.8, 0.85, 0.9))
 		vbox.add_child(lbl)
 
+
 func _toggle_hud() -> void:
 	if _hud_layer:
 		_hud_layer.visible = not _hud_layer.visible
+
 
 func _switch_to_player_camera() -> void:
 	var root = get_tree().current_scene if get_tree() else null

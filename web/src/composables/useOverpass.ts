@@ -29,6 +29,12 @@ export const PRESET_CACHES: CachedPreset[] = [
   }
 ]
 
+export {
+  OVERTURE_PRESET_CACHES,
+  type CachedOverturePreset,
+  type OvertureFeatureCollection
+} from './useOverture'
+
 export function matchesBBox(a: BoundingBox, b: BoundingBox, tolerance = 0.0008): boolean {
   return (
     Math.abs(a.west - b.west) < tolerance &&

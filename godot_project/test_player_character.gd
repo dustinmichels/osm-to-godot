@@ -6,6 +6,7 @@ const OSMParserClass = preload("res://addons/osm_importer/osm_parser.gd")
 const OSMSceneBuilderClass = preload("res://addons/osm_importer/scene_builder.gd")
 const PlayerScriptClass = preload("res://character/character.gd")
 
+
 func _init() -> void:
 	print("==================================================")
 	print("Running 3D Player Character Verification Suite")
@@ -63,6 +64,7 @@ func _init() -> void:
 		print("==================================================")
 		quit(1)
 
+
 func _verify_character_scene() -> bool:
 	var scene_path = "res://character/character.tscn"
 	if not ResourceLoader.exists(scene_path):
@@ -113,6 +115,7 @@ func _verify_character_scene() -> bool:
 	player.free()
 	return true
 
+
 func _verify_character_animations() -> bool:
 	var glb_path = "res://character/human_character.glb"
 	if not ResourceLoader.exists(glb_path):
@@ -128,7 +131,10 @@ func _verify_character_animations() -> bool:
 	# Check Skeleton3D
 	var skeleton = model_inst.find_child("Skeleton3D", true, false) as Skeleton3D
 	if not skeleton or skeleton.get_bone_count() < 10:
-		printerr("Skeleton3D missing or insufficient bones: ", skeleton.get_bone_count() if skeleton else 0)
+		printerr(
+			"Skeleton3D missing or insufficient bones: ",
+			skeleton.get_bone_count() if skeleton else 0
+		)
 		model_inst.free()
 		return false
 	print("  Skeleton3D found with ", skeleton.get_bone_count(), " bones")
@@ -151,13 +157,16 @@ func _verify_character_animations() -> bool:
 	model_inst.free()
 	return true
 
+
 func _verify_scene_builder_integration() -> bool:
 	var parser = OSMParserClass.new()
 	var parse_res = parser.parse_file("../tests/fixtures/sample_city_export.json")
 	var roads = parse_res.get("roads", [])
 	var buildings = parse_res.get("buildings", [])
 
-	var city_root = OSMSceneBuilderClass.build_city_scene(buildings, roads, true, false, false, 500.0, 1500.0, false, [], true)
+	var city_root = OSMSceneBuilderClass.build_city_scene(
+		buildings, roads, true, false, false, 500.0, 1500.0, false, [], true
+	)
 	if not city_root:
 		printerr("City scene build returned null")
 		return false
@@ -206,13 +215,16 @@ func _verify_scene_builder_integration() -> bool:
 	city_root.free()
 	return true
 
+
 func _verify_scene_serialization() -> bool:
 	var parser = OSMParserClass.new()
 	var parse_res = parser.parse_file("../tests/fixtures/simple_grid.json")
 	var roads = parse_res.get("roads", [])
 	var buildings = parse_res.get("buildings", [])
 
-	var city_root = OSMSceneBuilderClass.build_city_scene(buildings, roads, true, false, false, 500.0, 1500.0, false, [], true)
+	var city_root = OSMSceneBuilderClass.build_city_scene(
+		buildings, roads, true, false, false, 500.0, 1500.0, false, [], true
+	)
 	var test_path = "res://test_player_serialization.tscn"
 	var err = OSMSceneBuilderClass.save_city_scene(city_root, test_path)
 	city_root.free()
@@ -253,6 +265,7 @@ func _verify_scene_serialization() -> bool:
 	DirAccess.remove_absolute(test_path)
 	return true
 
+
 func _verify_movement_physics() -> bool:
 	var char_scene = load("res://character/character.tscn") as PackedScene
 	var player = char_scene.instantiate() as CharacterBody3D
@@ -267,7 +280,7 @@ func _verify_movement_physics() -> bool:
 
 	# Test gravity application
 	var orig_y_vel = player.velocity.y
-	player._physics_process(0.1) # 0.1s delta
+	player._physics_process(0.1)  # 0.1s delta
 	# In air (not on floor), gravity pulls down
 	if player.velocity.y >= orig_y_vel:
 		printerr("Gravity did not pull player downward in air: vel.y = ", player.velocity.y)

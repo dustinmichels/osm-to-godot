@@ -1,6 +1,7 @@
 [tools]
 bun = "latest"
 uv = "latest"
+duckdb = "latest"
 oxfmt = "latest"
 
 [tasks.fmt]
@@ -27,6 +28,10 @@ run = "cd web && bun test"
 description = "Convert OSM export JSON to GeoJSON in data/ directory"
 raw = true
 run = "./scripts/convert-geojson.sh"
+
+[tasks.fetch-overture]
+description = "Fetch Overture Maps buildings and roads as GeoJSON for a bounding box"
+run = "python3 scripts/fetch_overture.py"
 
 [tasks.clear-scene]
 alias = ["clear-city-viewer"]

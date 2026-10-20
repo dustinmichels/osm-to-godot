@@ -8,10 +8,10 @@ This document outlines the architecture, capabilities, and distribution strategy
 
 Instead of requiring users to install the Godot game engine or understand game development tooling, the application can be distributed as a self-contained desktop program for anyone interested in exploring real-world urban environments:
 
-* **Any Street or City Worldwide:** Users search for any location (via the Photon geocoder) or pan the map to any neighborhood, university campus, downtown core, or rural roadway.
-* **Interactive Bounding Box Selection:** Users drag a bounding box over their streets of interest.
-* **One-Click Real-Time Generation:** Clicking **⚡ Send to Godot** queries the Overpass API, streams the OpenStreetMap data into the engine, computes local metric tangent-plane projections, extrudes 3D buildings with accurate heights and roof profiles, generates multi-lane road and bike lane ribbons, and renders the 3D scene in real time.
-* **Free-Flight 3D Navigation:** Users inspect the area using standard WASD and mouse flycam navigation, examining road widths, cycling infrastructure, shadow paths, and building massing.
+- **Any Street or City Worldwide:** Users search for any location (via the Photon geocoder) or pan the map to any neighborhood, university campus, downtown core, or rural roadway.
+- **Interactive Bounding Box Selection:** Users drag a bounding box over their streets of interest.
+- **One-Click Real-Time Generation:** Clicking **⚡ Send to Godot** queries the Overpass API, streams the OpenStreetMap data into the engine, computes local metric tangent-plane projections, extrudes 3D buildings with accurate heights and roof profiles, generates multi-lane road and bike lane ribbons, and renders the 3D scene in real time.
+- **Free-Flight 3D Navigation:** Users inspect the area using standard WASD and mouse flycam navigation, examining road widths, cycling infrastructure, shadow paths, and building massing.
 
 ---
 
@@ -38,9 +38,10 @@ When exporting a Godot project as a standalone desktop binary, **the entire Godo
 ```
 
 ### What this means for end users:
-* **No Engine Installation:** End users do **not** need Godot, Bun, Node.js, Python, or terminal access.
-* **Standard Native App:** Distributed as a standard `.zip` or `.dmg` with a single clickable executable.
-* **Zero Configuration:** Double-clicking the application icon launches the 3D window and initializes the local bridge automatically.
+
+- **No Engine Installation:** End users do **not** need Godot, Bun, Node.js, Python, or terminal access.
+- **Standard Native App:** Distributed as a standard `.zip` or `.dmg` with a single clickable executable.
+- **Zero Configuration:** Double-clicking the application icon launches the 3D window and initializes the local bridge automatically.
 
 ---
 
@@ -98,7 +99,7 @@ func _exit_tree() -> void:
 
 func _on_import_received(parsed_data: Dictionary, _raw_payload: Dictionary) -> void:
     print("[OSM Tool] Generating 3D city from OSM import...")
-    
+
     # Clear existing geometry
     for child in buildings_container.get_children():
         child.queue_free()
@@ -108,7 +109,7 @@ func _on_import_received(parsed_data: Dictionary, _raw_payload: Dictionary) -> v
     # Build new procedural buildings and roads
     var buildings = parsed_data.get("buildings", [])
     var roads = parsed_data.get("roads", [])
-    
+
     OSMSceneBuilderClass.populate_city_node(self, buildings, roads)
 ```
 
@@ -128,6 +129,7 @@ run/main_scene="res://city_viewer.tscn"
 Because Godot's export pipeline only includes known resource types (`.tscn`, `.tres`, `.gd`, `.png`) by default, the web distribution files must be explicitly included.
 
 In Godot Editor:
+
 1. Open **Project → Export...**
 2. In your Export Preset (Windows / macOS / Linux), navigate to the **Resources** tab.
 3. In **Filters to export non-resource files/folders**, add:
@@ -160,5 +162,5 @@ godot --headless --path godot_project --export-release "Linux/X11" builds/linux/
 
 ### Release Packaging
 
-* **GitHub Releases:** Attach zip archives of each export build (`OSMCityExplorer-macOS-v1.0.0.zip`, `OSMCityExplorer-Windows-v1.0.0.zip`).
-* **Self-Contained Portability:** The resulting application folder requires no external libraries or runtime dependencies on the target system.
+- **GitHub Releases:** Attach zip archives of each export build (`OSMCityExplorer-macOS-v1.0.0.zip`, `OSMCityExplorer-Windows-v1.0.0.zip`).
+- **Self-Contained Portability:** The resulting application folder requires no external libraries or runtime dependencies on the target system.

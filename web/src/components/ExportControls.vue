@@ -1,19 +1,33 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useBBox } from '@/composables/useBBox'
 import { useOverpass } from '@/composables/useOverpass'
+import { useOverture } from '@/composables/useOverture'
 import { useGodotBridge } from '@/composables/useGodotBridge'
 
-const { hasBBox, isDangerSize, areaKm2 } = useBBox()
+const { normalizedBBox, hasBBox, isDangerSize, areaKm2 } = useBBox()
 const {
-  isLoading,
-  statusMessage,
-  errorMessage,
-  lastExportPayload,
-  executeExport,
-  downloadJsonFile
+  isLoading: isOsmLoading,
+  statusMessage: osmStatusMessage,
+  errorMessage: osmErrorMessage,
+  lastExportPayload: lastOsmPayload,
+  executeExport: executeOsmExport,
+  downloadJsonFile: downloadOsmJson
 } = useOverpass()
 
+const {
+  isLoading: isOvertureLoading,
+  statusMessage: overtureStatusMessage,
+  errorMessage: overtureErrorMessage,
+  lastExportPayload: lastOverturePayload,
+  getCachedPreset: getCachedOverturePreset,
+  executeExport: executeOvertureExport,
+  downloadGeoJsonFile: downloadOvertureGeoJson
+} = useOverture()
+
+const isLoading = computed(() => (dataSource.value === 'osm' ? isOsmLoading.value : isOvertureLoading.value))
+const statusMessage = computed(() => (dataSource.value === 'osm' ? osmStatusMessage.value : overtureStatusMessage.value))
+const errorMessage = computed(() => (dataSource.value === 'osm' ? osmErrorMessage.value : overtureErrorMessage.value))
 const {
   isConnected,
   isSending,
@@ -21,6 +35,7 @@ const {
   lastTransferStats,
   lastTransferError,
   sendToGodot,
+  sendBBoxToGodot,
   startHeartbeat,
   stopHeartbeat
 } = useGodotBridge()
@@ -36,6 +51,25 @@ onUnmounted(() => {
 const showConfirmModal = ref(false)
 const pendingAction = ref<'godot' | 'download'>('godot')
 const forceFallback = ref(false)
+const dataSource = ref<'overture' | 'osm'>('overture')
+
+watch(
+  [normalizedBBox, dataSource],
+  ([box, src]) => {
+    if (src === 'overture' && box) {
+      const cached = getCachedOverturePreset(box)
+      if (cached) {
+        lastOverturePayload.value = cached.payload
+        overtureStatusMessage.value = `Loaded cached Overture data (${cached.payload.features.length} features, offline)!`
+        overtureErrorMessage.value = null
+      } else if (lastOverturePayload.value) {
+        lastOverturePayload.value = null
+        overtureStatusMessage.value = ''
+      }
+    }
+  },
+  { immediate: true }
+)
 
 function onActionClick(action: 'godot' | 'download') {
   if (!hasBBox.value) return
@@ -51,16 +85,60 @@ function onActionClick(action: 'godot' | 'download') {
 
 async function executeAction(action: 'godot' | 'download') {
   showConfirmModal.value = false
-  let payload = lastExportPayload.value
+  const box = normalizedBBox.value
+  if (!box) return
+
+  if (dataSource.value === 'overture') {
+    let payload = lastOverturePayload.value
+    if (!payload) {
+      payload = await executeOvertureExport()
+    }
+
+    if (payload) {
+      if (action === 'godot') {
+        await sendToGodot(payload)
+      } else {
+        const cached = getCachedOverturePreset(box)
+        const filename = cached ? `${cached.name}_overture.geojson` : undefined
+        downloadOvertureGeoJson(payload, filename)
+      }
+      return
+    }
+
+    // Fallback when not cached:
+    if (action === 'godot') {
+      await sendBBoxToGodot(box)
+    } else {
+      const bboxStr = `${box.west},${box.south},${box.east},${box.north}`
+      const info = {
+        metadata: {
+          source: 'Overture Maps Foundation',
+          bbox: [box.west, box.south, box.east, box.north],
+          command: `mise run fetch-overture --bbox="${bboxStr}"`
+        }
+      }
+      const blob = new Blob([JSON.stringify(info, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `overture_bbox_${box.south.toFixed(4)}_${box.west.toFixed(4)}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+    }
+    return
+  }
+
+  // OSM Overpass path
+  let payload = lastOsmPayload.value
   if (!payload) {
-    payload = await executeExport({ forceFallback: forceFallback.value })
+    payload = await executeOsmExport({ forceFallback: forceFallback.value })
   }
   if (!payload) return
 
   if (action === 'godot') {
     await sendToGodot(payload)
   } else {
-    downloadJsonFile(payload)
+    downloadOsmJson(payload)
   }
 }
 </script>
@@ -83,14 +161,33 @@ async function executeAction(action: 'godot' | 'download') {
       </div>
     </div>
 
-    <!-- Fallback Switch -->
-    <div class="fallback-toggle">
+    <!-- Source Selector -->
+    <div class="source-toggle-row">
+      <button
+        type="button"
+        class="source-tab-btn"
+        :class="{ active: dataSource === 'overture' }"
+        @click="dataSource = 'overture'"
+      >
+        🦆 Overture Maps
+      </button>
+      <button
+        type="button"
+        class="source-tab-btn"
+        :class="{ active: dataSource === 'osm' }"
+        @click="dataSource = 'osm'"
+      >
+        🌐 OSM Overpass
+      </button>
+    </div>
+
+    <!-- Fallback Switch (OSM only) -->
+    <div v-if="dataSource === 'osm'" class="fallback-toggle">
       <label class="toggle-label">
         <input v-model="forceFallback" type="checkbox" :disabled="isLoading" />
         <span class="toggle-text">Use OSM 0.6 API directly (fast for tiny boxes)</span>
       </label>
     </div>
-
     <!-- Action Buttons -->
     <div class="actions-row">
       <button
@@ -116,7 +213,7 @@ async function executeAction(action: 'godot' | 'download') {
         <svg viewBox="0 0 20 20" fill="currentColor" class="btn-icon-sub">
           <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
         </svg>
-        <span>Download JSON</span>
+        <span>{{ dataSource === 'overture' ? 'Download GeoJSON' : 'Download JSON' }}</span>
       </button>
     </div>
 
@@ -147,13 +244,14 @@ async function executeAction(action: 'godot' | 'download') {
     </div>
 
     <!-- Export Summary Card -->
-    <div v-if="lastExportPayload" class="summary-box">
+    <!-- OSM Export Summary Card -->
+    <div v-if="dataSource === 'osm' && lastOsmPayload" class="summary-box">
       <div class="summary-header">
         <span class="summary-title">Export Succeeded</span>
         <button
           type="button"
           class="re-download-btn"
-          @click="downloadJsonFile(lastExportPayload)"
+          @click="downloadOsmJson(lastOsmPayload!)"
         >
           Download Again
         </button>
@@ -161,20 +259,49 @@ async function executeAction(action: 'godot' | 'download') {
 
       <div class="stats-row">
         <div class="stat-pill">
-          <span class="stat-num">{{ lastExportPayload.metadata.stats.highwaysCount }}</span>
+          <span class="stat-num">{{ lastOsmPayload.metadata.stats.highwaysCount }}</span>
           <span class="stat-lbl">Roads</span>
         </div>
         <div class="stat-pill">
-          <span class="stat-num">{{ lastExportPayload.metadata.stats.buildingsCount }}</span>
+          <span class="stat-num">{{ lastOsmPayload.metadata.stats.buildingsCount }}</span>
           <span class="stat-lbl">Buildings</span>
         </div>
         <div class="stat-pill">
-          <span class="stat-num">{{ lastExportPayload.metadata.stats.relationsCount }}</span>
+          <span class="stat-num">{{ lastOsmPayload.metadata.stats.relationsCount }}</span>
           <span class="stat-lbl">Relations</span>
         </div>
         <div class="stat-pill">
-          <span class="stat-num">{{ lastExportPayload.elements.length }}</span>
+          <span class="stat-num">{{ lastOsmPayload.elements.length }}</span>
           <span class="stat-lbl">Total</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Overture Export Summary Card -->
+    <div v-if="dataSource === 'overture' && lastOverturePayload" class="summary-box">
+      <div class="summary-header">
+        <span class="summary-title">Overture Cache Ready</span>
+        <button
+          type="button"
+          class="re-download-btn"
+          @click="downloadOvertureGeoJson(lastOverturePayload!)"
+        >
+          Download Again
+        </button>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-pill">
+          <span class="stat-num">{{ lastOverturePayload.metadata.counts.segment ?? 0 }}</span>
+          <span class="stat-lbl">Roads</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-num">{{ lastOverturePayload.metadata.counts.building ?? 0 }}</span>
+          <span class="stat-lbl">Buildings</span>
+        </div>
+        <div class="stat-pill">
+          <span class="stat-num">{{ lastOverturePayload.features.length }}</span>
+          <span class="stat-lbl">Total Features</span>
         </div>
       </div>
     </div>
@@ -216,6 +343,38 @@ async function executeAction(action: 'godot' | 'download') {
   box-shadow: 0 16px 36px rgba(0, 0, 0, 0.4);
   color: #f1f5f9;
   font-family: inherit;
+}
+
+.source-toggle-row {
+  display: flex;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 3px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.source-tab-btn {
+  flex: 1;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.source-tab-btn:hover {
+  color: #f8fafc;
+}
+
+.source-tab-btn.active {
+  background: #3b82f6;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
 }
 
 .card-header {

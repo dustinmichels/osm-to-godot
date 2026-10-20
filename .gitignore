@@ -1,8 +1,12 @@
+Godot - UE/
+
 # OpenStreetMap data and runtime exports
 /data/
 godot_project/data/*
 !godot_project/data/medford_y_export.json
+!godot_project/data/medford_y_overture.geojson
 !tests/fixtures/*.json
+!tests/fixtures/*.geojson
 
 # Godot 4
 .godot/

@@ -11,7 +11,19 @@ const ChunkManagerClass = preload("chunk_manager.gd")
 
 
 ## Build a complete CityRoot Node3D hierarchy with lighting, environment, camera, buildings, and roads
-static func build_city_scene(buildings_data: Array, roads_data: Array = [], create_colliders: bool = true, batched_buildings: bool = false, use_spatial_chunks: bool = false, chunk_size: float = 500.0, lod_max_distance: float = 1500.0, use_csg_buildings: bool = false, pois_data: Array = [], spawn_player: bool = true, create_ground: bool = true) -> Node3D:
+static func build_city_scene(
+	buildings_data: Array,
+	roads_data: Array = [],
+	create_colliders: bool = true,
+	batched_buildings: bool = false,
+	use_spatial_chunks: bool = false,
+	chunk_size: float = 500.0,
+	lod_max_distance: float = 1500.0,
+	use_csg_buildings: bool = false,
+	pois_data: Array = [],
+	spawn_player: bool = true,
+	create_ground: bool = true
+) -> Node3D:
 	var city_root = Node3D.new()
 	city_root.name = "CityRoot"
 
@@ -51,13 +63,17 @@ static func build_city_scene(buildings_data: Array, roads_data: Array = [], crea
 	var chunked_world: Node3D = null
 
 	if use_spatial_chunks:
-		chunked_world = ChunkManagerClass.build_chunked_world(buildings_data, roads_data, chunk_size, create_colliders, lod_max_distance)
+		chunked_world = ChunkManagerClass.build_chunked_world(
+			buildings_data, roads_data, chunk_size, create_colliders, lod_max_distance
+		)
 		city_root.add_child(chunked_world)
 	else:
 		streets = RoadBuilderClass.build_roads_node(roads_data, create_colliders)
 		streets.name = "Streets"
 		city_root.add_child(streets)
-		buildings_root = BuildingBuilderClass.build_buildings_node(buildings_data, create_colliders, batched_buildings, use_csg_buildings)
+		buildings_root = BuildingBuilderClass.build_buildings_node(
+			buildings_data, create_colliders, batched_buildings, use_csg_buildings
+		)
 		buildings_root.name = "Buildings"
 		city_root.add_child(buildings_root)
 
@@ -120,13 +136,16 @@ static func build_city_scene(buildings_data: Array, roads_data: Array = [], crea
 
 	return city_root
 
+
 ## Create a walkable ground surface and static collider with a grassy texture
 static func _create_ground_node(scene_bounds: AABB, create_colliders: bool = true) -> Node3D:
 	var ground_root = Node3D.new()
 	ground_root.name = "Ground"
 
 	var half_size = maxf(maxf(scene_bounds.size.x, scene_bounds.size.z) * 1.5, 1000.0)
-	var center = scene_bounds.get_center() if scene_bounds.size.length_squared() > 0.1 else Vector3.ZERO
+	var center = (
+		scene_bounds.get_center() if scene_bounds.size.length_squared() > 0.1 else Vector3.ZERO
+	)
 
 	if create_colliders:
 		var sb = StaticBody3D.new()
@@ -154,6 +173,7 @@ static func _create_ground_node(scene_bounds: AABB, create_colliders: bool = tru
 
 	return ground_root
 
+
 ## Get or fallback create the grassy ground material
 static func _get_ground_material() -> StandardMaterial3D:
 	const GROUND_GRASS_MATERIAL_PATH = "res://materials/ground_grass.tres"
@@ -169,8 +189,11 @@ static func _get_ground_material() -> StandardMaterial3D:
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	return mat
 
+
 ## Find a suitable spawn point for the player near the center of the scene
-static func _determine_player_spawn_point(roads_data: Array, buildings_data: Array, center: Vector3) -> Vector3:
+static func _determine_player_spawn_point(
+	roads_data: Array, buildings_data: Array, center: Vector3
+) -> Vector3:
 	var best_pos = center + Vector3(0.0, 0.2, 0.0)
 	var min_dist_sq = INF
 
@@ -189,6 +212,7 @@ static func _determine_player_spawn_point(roads_data: Array, buildings_data: Arr
 
 	return best_pos
 
+
 ## Instantiate and initialize the player character node
 static func _create_player_node(spawn_pos: Vector3) -> CharacterBody3D:
 	var char_scene_path = "res://character/character.tscn"
@@ -206,6 +230,7 @@ static func _create_player_node(spawn_pos: Vector3) -> CharacterBody3D:
 			cam.current = true
 	return player
 
+
 ## Calculate combined AABB of all MeshInstance3D nodes under a root
 static func calculate_bounds(root: Node3D) -> AABB:
 	if root == null:
@@ -214,7 +239,10 @@ static func calculate_bounds(root: Node3D) -> AABB:
 	_accumulate_bounds_recursive(root, Transform3D.IDENTITY, state)
 	return state["aabb"]
 
-static func _accumulate_bounds_recursive(node: Node, parent_xform: Transform3D, state: Dictionary) -> void:
+
+static func _accumulate_bounds_recursive(
+	node: Node, parent_xform: Transform3D, state: Dictionary
+) -> void:
 	var cur_xform = parent_xform
 	if node is Node3D:
 		cur_xform = parent_xform * (node as Node3D).transform
@@ -242,7 +270,9 @@ static func _accumulate_bounds_recursive(node: Node, parent_xform: Transform3D, 
 				min_y = minf(min_y, pt.y)
 				max_y = maxf(max_y, pt.y)
 			var depth = csg.depth
-			var local_aabb = AABB(Vector3(min_x, min_y, -depth), Vector3(max_x - min_x, max_y - min_y, depth))
+			var local_aabb = AABB(
+				Vector3(min_x, min_y, -depth), Vector3(max_x - min_x, max_y - min_y, depth)
+			)
 			var transformed_aabb = cur_xform * local_aabb
 			if not state["found"]:
 				state["aabb"] = transformed_aabb
@@ -251,6 +281,8 @@ static func _accumulate_bounds_recursive(node: Node, parent_xform: Transform3D, 
 				state["aabb"] = (state["aabb"] as AABB).merge(transformed_aabb)
 	for child in node.get_children():
 		_accumulate_bounds_recursive(child, cur_xform, state)
+
+
 ## Recursively set node ownership so PackedScene serializes all children
 static func set_owner_recursive(node: Node, scene_root: Node) -> void:
 	for child in node.get_children():
@@ -258,8 +290,11 @@ static func set_owner_recursive(node: Node, scene_root: Node) -> void:
 		if child.scene_file_path.is_empty():
 			set_owner_recursive(child, scene_root)
 
+
 ## Save the city scene to a .tscn file on disk
-static func save_city_scene(city_root: Node3D, save_path: String = "res://city_viewer.tscn") -> Error:
+static func save_city_scene(
+	city_root: Node3D, save_path: String = "res://city_viewer.tscn"
+) -> Error:
 	var dir_path = save_path.get_base_dir()
 	var dir = DirAccess.open("res://")
 	if dir and not dir.dir_exists(dir_path.trim_prefix("res://")):
@@ -290,7 +325,9 @@ static func save_city_scene(city_root: Node3D, save_path: String = "res://city_v
 
 	var save_err = ResourceSaver.save(packed, save_path)
 	if save_err != OK:
-		push_error("[OSM Importer] Failed to save city scene to " + save_path + ": " + str(save_err))
+		push_error(
+			"[OSM Importer] Failed to save city scene to " + save_path + ": " + str(save_err)
+		)
 		return save_err
 
 	# Re-inject UID in scene header if stripped by headless ResourceSaver
@@ -301,8 +338,14 @@ static func save_city_scene(city_root: Node3D, save_path: String = "res://city_v
 			f_check.close()
 			var newline_pos = content.find("\n")
 			var first_line = content.substr(0, newline_pos) if newline_pos != -1 else content
-			if not 'uid="' in first_line and first_line.begins_with("[gd_scene") and first_line.ends_with("]"):
-				var new_header = first_line.left(first_line.length() - 1) + ' uid="' + existing_uid + '"]'
+			if (
+				not 'uid="' in first_line
+				and first_line.begins_with("[gd_scene")
+				and first_line.ends_with("]")
+			):
+				var new_header = (
+					first_line.left(first_line.length() - 1) + ' uid="' + existing_uid + '"]'
+				)
 				var rest = content.substr(newline_pos) if newline_pos != -1 else ""
 				var f_write = FileAccess.open(save_path, FileAccess.WRITE)
 				if f_write:
@@ -311,6 +354,7 @@ static func save_city_scene(city_root: Node3D, save_path: String = "res://city_v
 
 	print("[OSM Importer] Successfully saved city scene to: ", save_path)
 	return OK
+
 
 ## Clear the city scene and save an empty base scene to disk
 static func clear_city_scene(save_path: String = "res://city_viewer.tscn") -> Error:

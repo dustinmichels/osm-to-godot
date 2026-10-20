@@ -29,7 +29,7 @@ extends CharacterBody3D
 var spawn_position: Vector3 = Vector3.ZERO
 var _mouse_captured: bool = false
 var _camera_yaw: float = 0.0
-var _camera_pitch: float = -0.25 # Slightly looking down at character
+var _camera_pitch: float = -0.25  # Slightly looking down at character
 var _hud_layer: CanvasLayer = null
 var _fly_camera: Camera3D = null
 
@@ -40,25 +40,36 @@ var _fly_camera: Camera3D = null
 
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)
 
+
 func _ready() -> void:
 	spawn_position = global_position
-	
+
 	# Configure looping animations
 	if anim_player:
-		for anim_name in ["Idle_A", "Walk", "Jog", "Sprint", "Jump_air", "Crouch_Idle", "Crouch_Walk", "Dance_Simple"]:
+		for anim_name in [
+			"Idle_A",
+			"Walk",
+			"Jog",
+			"Sprint",
+			"Jump_air",
+			"Crouch_Idle",
+			"Crouch_Walk",
+			"Dance_Simple"
+		]:
 			if anim_player.has_animation(anim_name):
 				anim_player.get_animation(anim_name).loop_mode = Animation.LOOP_LINEAR
 		anim_player.play("Idle_A")
-		
+
 	# Initial camera pitch & yaw
 	if spring_arm:
 		spring_arm.rotation = Vector3(_camera_pitch, _camera_yaw, 0.0)
-		
+
 	if show_hud:
 		_setup_hud()
-		
+
 	# Look for an overview fly-camera in the scene to allow toggling
 	_find_fly_camera()
+
 
 func _find_fly_camera() -> void:
 	var root = get_tree().current_scene if get_tree() else null
@@ -70,10 +81,15 @@ func _find_fly_camera() -> void:
 				_fly_camera = cam
 				break
 
+
 func _input(event: InputEvent) -> void:
 	if not camera.current:
 		# If our camera is not active, only listen for camera toggle key
-		if event is InputEventKey and event.pressed and (event.keycode == KEY_V or event.keycode == KEY_TAB):
+		if (
+			event is InputEventKey
+			and event.pressed
+			and (event.keycode == KEY_V or event.keycode == KEY_TAB)
+		):
 			_toggle_camera_mode()
 		return
 
@@ -84,17 +100,25 @@ func _input(event: InputEvent) -> void:
 				_mouse_captured = true
 		elif event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			if spring_arm:
-				spring_arm.spring_length = clampf(spring_arm.spring_length - zoom_speed, min_zoom, max_zoom)
+				spring_arm.spring_length = clampf(
+					spring_arm.spring_length - zoom_speed, min_zoom, max_zoom
+				)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			if spring_arm:
-				spring_arm.spring_length = clampf(spring_arm.spring_length + zoom_speed, min_zoom, max_zoom)
-				
+				spring_arm.spring_length = clampf(
+					spring_arm.spring_length + zoom_speed, min_zoom, max_zoom
+				)
+
 	elif event is InputEventMouseMotion and _mouse_captured:
 		_camera_yaw -= event.relative.x * mouse_sensitivity
-		_camera_pitch = clampf(_camera_pitch - event.relative.y * mouse_sensitivity, deg_to_rad(-75.0), deg_to_rad(65.0))
+		_camera_pitch = clampf(
+			_camera_pitch - event.relative.y * mouse_sensitivity,
+			deg_to_rad(-75.0),
+			deg_to_rad(65.0)
+		)
 		if spring_arm:
 			spring_arm.rotation = Vector3(_camera_pitch, _camera_yaw, 0.0)
-			
+
 	elif event is InputEventKey and event.pressed:
 		if event.keycode == KEY_ESCAPE:
 			if _mouse_captured:
@@ -104,6 +128,7 @@ func _input(event: InputEvent) -> void:
 			_toggle_hud()
 		elif event.keycode == KEY_V or event.keycode == KEY_TAB:
 			_toggle_camera_mode()
+
 
 func _physics_process(delta: float) -> void:
 	# 1. Fall safeguard / respawn
@@ -135,7 +160,7 @@ func _physics_process(delta: float) -> void:
 		input_vec.x -= 1.0
 	if Input.is_key_pressed(KEY_RIGHT) or Input.is_key_pressed(KEY_D):
 		input_vec.x += 1.0
-		
+
 	# Fallback to UI actions if mapped
 	if input_vec == Vector2.ZERO:
 		input_vec = Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
@@ -150,7 +175,11 @@ func _physics_process(delta: float) -> void:
 		# Transform relative to camera horizontal angle (spring arm yaw)
 		var cam_rot_y = 0.0
 		if spring_arm:
-			cam_rot_y = spring_arm.global_rotation.y if spring_arm.is_inside_tree() else spring_arm.rotation.y
+			cam_rot_y = (
+				spring_arm.global_rotation.y
+				if spring_arm.is_inside_tree()
+				else spring_arm.rotation.y
+			)
 		var forward = -Vector3(sin(cam_rot_y), 0.0, cos(cam_rot_y))
 		var right = Vector3(cos(cam_rot_y), 0.0, -sin(cam_rot_y))
 		move_dir = (forward * (-input_vec.y) + right * input_vec.x).normalized()
@@ -174,6 +203,7 @@ func _physics_process(delta: float) -> void:
 
 	# 6. Update Animations with velocity-matched playback speed
 	_update_animation(move_dir, is_sprinting, is_walking)
+
 
 func _update_animation(move_dir: Vector3, is_sprinting: bool, is_walking: bool) -> void:
 	if not anim_player:
@@ -203,6 +233,8 @@ func _update_animation(move_dir: Vector3, is_sprinting: bool, is_walking: bool) 
 	if anim_player.current_animation != target_anim:
 		anim_player.play(target_anim, 0.2)
 	anim_player.speed_scale = target_speed_scale
+
+
 func _toggle_camera_mode() -> void:
 	if not _fly_camera:
 		_find_fly_camera()
@@ -223,6 +255,7 @@ func _toggle_camera_mode() -> void:
 		camera.current = true
 		if _hud_layer:
 			_hud_layer.visible = true
+
 
 func _setup_hud() -> void:
 	if Engine.is_editor_hint():
@@ -283,6 +316,7 @@ func _setup_hud() -> void:
 		lbl.add_theme_font_size_override("font_size", 12)
 		lbl.add_theme_color_override("font_color", Color(0.82, 0.88, 0.94))
 		vbox.add_child(lbl)
+
 
 func _toggle_hud() -> void:
 	if _hud_layer:

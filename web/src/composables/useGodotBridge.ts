@@ -55,7 +55,7 @@ export function useGodotBridge() {
     }
   }
 
-  async function sendToGodot(payload: OSMExportPayload): Promise<boolean> {
+  async function sendToGodot(payload: OSMExportPayload | Record<string, unknown>): Promise<boolean> {
     isSending.value = true
     lastTransferError.value = null
 
@@ -76,10 +76,13 @@ export function useGodotBridge() {
 
       const result = await res.json()
       if (result.success) {
+        const fallbackElemCount = 'elements' in payload && Array.isArray((payload as OSMExportPayload).elements)
+          ? (payload as OSMExportPayload).elements.length
+          : 0
         lastTransferStats.value = {
           roads: result.stats?.roads ?? 0,
           buildings: result.stats?.buildings ?? 0,
-          elements: result.stats?.elements ?? payload.elements.length,
+          elements: result.stats?.elements ?? fallbackElemCount,
           savedPath: result.saved_path
         }
         isConnected.value = true
@@ -94,6 +97,13 @@ export function useGodotBridge() {
     } finally {
       isSending.value = false
     }
+  }
+
+  async function sendBBoxToGodot(bbox: { west: number; south: number; east: number; north: number }): Promise<boolean> {
+    return sendToGodot({
+      bbox: [bbox.west, bbox.south, bbox.east, bbox.north],
+      source: 'overture'
+    })
   }
 
   function startHeartbeat(intervalMs = 6000) {
@@ -120,6 +130,7 @@ export function useGodotBridge() {
     lastTransferError,
     checkConnection,
     sendToGodot,
+    sendBBoxToGodot,
     startHeartbeat,
     stopHeartbeat
   }

@@ -2,6 +2,7 @@ extends SceneTree
 
 const OSMSceneBuilderClass = preload("res://addons/osm_importer/scene_builder.gd")
 
+
 func _init() -> void:
 	var err = OSMSceneBuilderClass.clear_city_scene("res://city_viewer.tscn")
 	if err != OK:

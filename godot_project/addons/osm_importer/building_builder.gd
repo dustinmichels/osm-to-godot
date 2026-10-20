@@ -30,41 +30,13 @@ const SEMANTIC_BUILDING_HEIGHTS: Dictionary = {
 const DEFAULT_BUILDING_HEIGHT: float = 8.0
 
 const MATERIAL_PRESETS: Dictionary = {
-	"brick": {
-		"color": Color(0.612, 0.278, 0.220), # #9C4738
-		"roughness": 0.90,
-		"metallic": 0.0
-	},
-	"concrete": {
-		"color": Color(0.690, 0.678, 0.663), # #B0ADA9
-		"roughness": 0.85,
-		"metallic": 0.0
-	},
-	"glass": {
-		"color": Color(0.627, 0.769, 0.875), # #A0C4DF
-		"roughness": 0.15,
-		"metallic": 0.5
-	},
-	"plaster": {
-		"color": Color(0.910, 0.886, 0.835), # #E8E2D5
-		"roughness": 0.90,
-		"metallic": 0.0
-	},
-	"wood": {
-		"color": Color(0.541, 0.353, 0.212), # #8A5A36
-		"roughness": 0.70,
-		"metallic": 0.0
-	},
-	"default_wall": {
-		"color": Color(0.816, 0.784, 0.722), # #D0C8B8
-		"roughness": 0.80,
-		"metallic": 0.0
-	},
-	"default_roof": {
-		"color": Color(0.290, 0.271, 0.251), # #4A4540
-		"roughness": 0.90,
-		"metallic": 0.0
-	}
+	"brick": {"color": Color(0.612, 0.278, 0.220), "roughness": 0.90, "metallic": 0.0},  # #9C4738
+	"concrete": {"color": Color(0.690, 0.678, 0.663), "roughness": 0.85, "metallic": 0.0},  # #B0ADA9
+	"glass": {"color": Color(0.627, 0.769, 0.875), "roughness": 0.15, "metallic": 0.5},  # #A0C4DF
+	"plaster": {"color": Color(0.910, 0.886, 0.835), "roughness": 0.90, "metallic": 0.0},  # #E8E2D5
+	"wood": {"color": Color(0.541, 0.353, 0.212), "roughness": 0.70, "metallic": 0.0},  # #8A5A36
+	"default_wall": {"color": Color(0.816, 0.784, 0.722), "roughness": 0.80, "metallic": 0.0},  # #D0C8B8
+	"default_roof": {"color": Color(0.290, 0.271, 0.251), "roughness": 0.90, "metallic": 0.0}  # #4A4540
 }
 
 const COLOR_ALIASES: Dictionary = {
@@ -96,6 +68,7 @@ const NUMBER_WORDS: Dictionary = {
 	"twelve": 12.0
 }
 
+
 ## Robust regex sanitizer for numeric tags (e.g. "12 meters", "lanes=two", "approx 3", "15.5m", "10,5")
 static func parse_numeric_dimension(val: Variant, default_val: float = 0.0) -> float:
 	if val == null:
@@ -105,25 +78,27 @@ static func parse_numeric_dimension(val: Variant, default_val: float = 0.0) -> f
 	var s: String = str(val).strip_edges().to_lower()
 	if s.is_empty():
 		return default_val
-		
+
 	# Check word numbers like "two", "three"
 	if NUMBER_WORDS.has(s):
 		return NUMBER_WORDS[s]
 	for word in NUMBER_WORDS.keys():
 		if s == word or s.begins_with(word + " ") or s.ends_with(" " + word):
 			return NUMBER_WORDS[word]
-			
+
 	# Normalize European comma decimal separator if present: "12,5" -> "12.5"
 	s = s.replace(",", ".")
-	
+
 	# Match floating point or integer number, even if surrounded by text ("approx 3", "12 meters", "14.5m")
 	var regex = RegEx.new()
 	regex.compile("([0-9]+(?:\\.[0-9]+)?)")
 	var m = regex.search(s)
 	if m != null and m.strings.size() > 1:
 		return float(m.strings[1])
-		
+
 	return default_val
+
+
 ## Resolve building heights following the deterministic resolution ladder:
 ## 1. Explicit `height` tag
 ## 2. `building:levels` tag * 3.3m
@@ -136,28 +111,28 @@ static func resolve_height(tags: Dictionary) -> Dictionary:
 	elif tags.has("building:min_level"):
 		var min_lvl = parse_numeric_dimension(tags["building:min_level"], 0.0)
 		base_y = min_lvl * LEVEL_HEIGHT_METERS
-		
+
 	var height: float = 0.0
 	var has_explicit_height = false
-	
+
 	if tags.has("height"):
 		var h = parse_numeric_dimension(tags["height"], 0.0)
 		if h > 0.0:
 			height = h
 			has_explicit_height = true
-			
+
 	if not has_explicit_height and tags.has("building:levels"):
 		var levels = parse_numeric_dimension(tags["building:levels"], 0.0)
 		if levels > 0.0:
 			height = levels * LEVEL_HEIGHT_METERS
-			
+
 	if height <= 0.0:
 		var b_type: String = str(tags.get("building", "yes")).to_lower()
 		if SEMANTIC_BUILDING_HEIGHTS.has(b_type):
 			height = SEMANTIC_BUILDING_HEIGHTS[b_type]
 		else:
 			height = DEFAULT_BUILDING_HEIGHT
-			
+
 	# In OSM, explicit height often denotes total height above ground.
 	# If height was explicit and exceeds base_y, roof_y = height; otherwise roof_y = base_y + height.
 	var roof_y: float = 0.0
@@ -165,14 +140,12 @@ static func resolve_height(tags: Dictionary) -> Dictionary:
 		roof_y = height
 	else:
 		roof_y = base_y + height
-		
-	return {
-		"base_y": base_y,
-		"roof_y": roof_y,
-		"height": roof_y - base_y
-	}
+
+	return {"base_y": base_y, "roof_y": roof_y, "height": roof_y - base_y}
+
 
 # --- 3.4 Materials & Color Mapping ---
+
 
 ## Parse CSS color string, hex code, or alias
 static func parse_color(color_str: Variant, default_color: Color) -> Color:
@@ -181,92 +154,105 @@ static func parse_color(color_str: Variant, default_color: Color) -> Color:
 	var s = str(color_str).strip_edges().to_lower()
 	if s.is_empty():
 		return default_color
-		
+
 	if COLOR_ALIASES.has(s):
 		return COLOR_ALIASES[s]
-		
+
 	# Try Godot's built-in parser (handles HTML names and #RGB / #RRGGBB)
 	var col = Color.from_string(s, Color(-1, -1, -1, -1))
 	if col.a >= 0.0:
 		return col
-		
+
 	# Try prefixing '#' if missing
 	if not s.begins_with("#"):
 		col = Color.from_string("#" + s, Color(-1, -1, -1, -1))
 		if col.a >= 0.0:
 			return col
-			
+
 	return default_color
 
+
 ## Generate wall StandardMaterial3D based on tags, supporting triplanar mapping
-static func resolve_wall_material(tags: Dictionary, enable_triplanar: bool = true) -> StandardMaterial3D:
+static func resolve_wall_material(
+	tags: Dictionary, enable_triplanar: bool = true
+) -> StandardMaterial3D:
 	var mat: StandardMaterial3D
 	var mat_name: String = str(tags.get("building:material", "")).to_lower()
 	var col_tag = tags.get("building:colour", tags.get("colour", null))
-	
-	if mat_name.is_empty() and col_tag == null and ResourceLoader.exists("res://materials/building_wall_default.tres"):
+
+	if (
+		mat_name.is_empty()
+		and col_tag == null
+		and ResourceLoader.exists("res://materials/building_wall_default.tres")
+	):
 		var base_res = load("res://materials/building_wall_default.tres") as StandardMaterial3D
 		if base_res != null:
 			mat = base_res.duplicate()
-			
+
 	if mat == null:
 		mat = StandardMaterial3D.new()
 		mat.cull_mode = BaseMaterial3D.CULL_BACK
-		
+
 		var preset: Dictionary = MATERIAL_PRESETS["default_wall"]
 		if MATERIAL_PRESETS.has(mat_name):
 			preset = MATERIAL_PRESETS[mat_name]
 			mat.resource_name = "wall_" + mat_name
 		else:
 			mat.resource_name = "wall_default"
-			
+
 		mat.albedo_color = preset["color"]
 		mat.roughness = preset["roughness"]
 		mat.metallic = preset["metallic"]
-		
+
 		# Check building:colour or colour override
 		if col_tag != null:
 			mat.albedo_color = parse_color(col_tag, mat.albedo_color)
 			mat.resource_name += "_" + str(col_tag)
-			
+
 	if enable_triplanar:
 		mat.uv1_triplanar = true
 		mat.uv1_world_triplanar = true
-		
+
 	return mat
+
 
 ## Generate roof StandardMaterial3D based on tags
 static func resolve_roof_material(tags: Dictionary) -> StandardMaterial3D:
 	var mat: StandardMaterial3D
 	var mat_name: String = str(tags.get("roof:material", "")).to_lower()
 	var col_tag = tags.get("roof:colour", null)
-	
-	if mat_name.is_empty() and col_tag == null and ResourceLoader.exists("res://materials/building_roof_default.tres"):
+
+	if (
+		mat_name.is_empty()
+		and col_tag == null
+		and ResourceLoader.exists("res://materials/building_roof_default.tres")
+	):
 		var base_res = load("res://materials/building_roof_default.tres") as StandardMaterial3D
 		if base_res != null:
 			mat = base_res.duplicate()
-			
+
 	if mat == null:
 		mat = StandardMaterial3D.new()
 		mat.cull_mode = BaseMaterial3D.CULL_BACK
-		
+
 		var preset: Dictionary = MATERIAL_PRESETS["default_roof"]
 		if MATERIAL_PRESETS.has(mat_name):
 			preset = MATERIAL_PRESETS[mat_name]
 			mat.resource_name = "roof_" + mat_name
 		else:
 			mat.resource_name = "roof_default"
-			
+
 		mat.albedo_color = preset["color"]
 		mat.roughness = preset["roughness"]
 		mat.metallic = preset["metallic"]
-		
+
 		# Check roof:colour override
 		if col_tag != null:
 			mat.albedo_color = parse_color(col_tag, mat.albedo_color)
 			mat.resource_name += "_" + str(col_tag)
-			
+
 	return mat
+
 
 ## Get a stable unique key for wall material grouping
 static func get_wall_material_key(tags: Dictionary) -> String:
@@ -278,6 +264,7 @@ static func get_wall_material_key(tags: Dictionary) -> String:
 		return mat_name
 	return "default_wall"
 
+
 ## Get a stable unique key for roof material grouping
 static func get_roof_material_key(tags: Dictionary) -> String:
 	var mat_name: String = str(tags.get("roof:material", "")).strip_edges().to_lower()
@@ -288,41 +275,47 @@ static func get_roof_material_key(tags: Dictionary) -> String:
 		return mat_name
 	return "default_roof"
 
+
 # --- 3.2 & 3.3 Mesh Construction (Roof & Walls) ---
+
 
 ## Build raw geometry data for a building feature dictionary
 static func build_building_mesh_data(building: Dictionary) -> Dictionary:
 	var tags: Dictionary = building.get("tags", {})
 	var outer_rings: Array = building.get("outer_rings", [])
 	var inner_rings: Array = building.get("inner_rings", [])
-	
+
 	var h_info = resolve_height(tags)
 	var base_y: float = h_info["base_y"]
 	var roof_y: float = h_info["roof_y"]
-	
+
 	var wall_vertices = PackedVector3Array()
 	var wall_normals = PackedVector3Array()
 	var wall_uvs = PackedVector2Array()
 	var wall_indices = PackedInt32Array()
-	
+
 	var roof_vertices = PackedVector3Array()
 	var roof_normals = PackedVector3Array()
 	var roof_uvs = PackedVector2Array()
 	var roof_indices = PackedInt32Array()
-	
+
 	# --- 3.3 Wall Extrusion & Normals ---
 	# Outer rings: CCW (positive area in X, -Z plane)
 	for ring in outer_rings:
 		if ring is PackedVector3Array and ring.size() >= 3:
-			_extrude_wall_ring(ring, base_y, roof_y, false, wall_vertices, wall_normals, wall_uvs, wall_indices)
-			
+			_extrude_wall_ring(
+				ring, base_y, roof_y, false, wall_vertices, wall_normals, wall_uvs, wall_indices
+			)
+
 	# Inner rings: holes (CW in X, -Z plane).
 	# For interior hole walls facing the courtyard/hole air:
 	# Reverse ring so hole is on the right, solid wall on the left, normals face into the hole.
 	for ring in inner_rings:
 		if ring is PackedVector3Array and ring.size() >= 3:
-			_extrude_wall_ring(ring, base_y, roof_y, true, wall_vertices, wall_normals, wall_uvs, wall_indices)
-			
+			_extrude_wall_ring(
+				ring, base_y, roof_y, true, wall_vertices, wall_normals, wall_uvs, wall_indices
+			)
+
 	# --- 3.2 Roof Polygon Triangulation (Earcut) ---
 	# Each outer ring defines a polygon boundary; inner rings fall inside outer rings.
 	for outer in outer_rings:
@@ -330,36 +323,39 @@ static func build_building_mesh_data(building: Dictionary) -> Dictionary:
 			var tri_result = EarcutModule.triangulate_polygon_3d(outer, inner_rings, roof_y)
 			var pts: PackedVector3Array = tri_result["points"]
 			var idxs: PackedInt32Array = tri_result["indices"]
-			
+
 			var base_index = roof_vertices.size()
 			for pt in pts:
 				roof_vertices.append(pt)
 				roof_normals.append(Vector3(0.0, 1.0, 0.0))
 				# Planar world-space UV: U = X / 10.0, V = Z / 10.0
 				roof_uvs.append(Vector2(pt.x / 10.0, pt.z / 10.0))
-				
+
 			for idx in idxs:
 				roof_indices.append(base_index + idx)
-				
+
 	return {
 		"id": building.get("id", 0),
 		"tags": tags,
 		"height_info": h_info,
 		"wall_material": resolve_wall_material(tags),
 		"roof_material": resolve_roof_material(tags),
-		"walls": {
+		"walls":
+		{
 			"vertices": wall_vertices,
 			"normals": wall_normals,
 			"uvs": wall_uvs,
 			"indices": wall_indices
 		},
-		"roof": {
+		"roof":
+		{
 			"vertices": roof_vertices,
 			"normals": roof_normals,
 			"uvs": roof_uvs,
 			"indices": roof_indices
 		}
 	}
+
 
 ## Extrude a perimeter ring into vertical quads
 static func _extrude_wall_ring(
@@ -375,81 +371,82 @@ static func _extrude_wall_ring(
 	var pts = ring
 	if is_hole:
 		pts = ring.duplicate()
-		pts.reverse() # Reversing CW hole makes it CCW around the hole interior
-		
+		pts.reverse()  # Reversing CW hole makes it CCW around the hole interior
+
 	var n = pts.size()
 	if n < 3:
 		return
-		
+
 	# Strip closing point if identical to start
 	var count = n
 	if pts[0].distance_squared_to(pts[n - 1]) < 0.0001:
 		count = n - 1
-		
+
 	if count < 3:
 		return
-		
+
 	var u_accum = 0.0
 	for i in range(count):
 		var p0 = pts[i]
 		var p1 = pts[(i + 1) % count]
-		
+
 		var dx = p1.x - p0.x
 		var dz = p1.z - p0.z
 		var seg_len = sqrt(dx * dx + dz * dz)
 		if seg_len < 0.0001:
 			continue
-			
+
 		# Outward-facing normal perpendicular to segment in XZ plane
 		# Walking segment with exterior on right: normal is (-dz, 0, dx) normalized
 		var norm = Vector3(-dz / seg_len, 0.0, dx / seg_len)
-		
+
 		# 4 quad vertices
 		var v0 = Vector3(p0.x, base_y, p0.z)
 		var v1 = Vector3(p1.x, base_y, p1.z)
 		var v2 = Vector3(p1.x, roof_y, p1.z)
 		var v3 = Vector3(p0.x, roof_y, p0.z)
-		
+
 		var u0 = u_accum
 		var u1 = u_accum + seg_len
 		u_accum = u1
-		
+
 		var uv0 = Vector2(u0, base_y)
 		var uv1 = Vector2(u1, base_y)
 		var uv2 = Vector2(u1, roof_y)
 		var uv3 = Vector2(u0, roof_y)
-		
+
 		var start_idx = out_vertices.size()
 		out_vertices.append(v0)
 		out_vertices.append(v1)
 		out_vertices.append(v2)
 		out_vertices.append(v3)
-		
+
 		out_normals.append(norm)
 		out_normals.append(norm)
 		out_normals.append(norm)
 		out_normals.append(norm)
-		
+
 		out_uvs.append(uv0)
 		out_uvs.append(uv1)
 		out_uvs.append(uv2)
 		out_uvs.append(uv3)
-		
+
 		# Quad triangles: (V0, V1, V2) and (V0, V2, V3) (CCW outward)
 		out_indices.append(start_idx)
 		out_indices.append(start_idx + 1)
 		out_indices.append(start_idx + 2)
-		
+
 		out_indices.append(start_idx)
 		out_indices.append(start_idx + 2)
 		out_indices.append(start_idx + 3)
+
 
 ## Create an ArrayMesh with two surfaces: Surface 0 = Walls, Surface 1 = Roof
 static func create_building_mesh(mesh_data: Dictionary) -> ArrayMesh:
 	var mesh = ArrayMesh.new()
 	var walls: Dictionary = mesh_data.get("walls", {})
 	var roof: Dictionary = mesh_data.get("roof", {})
-	
+
 	# Surface 0: Walls
 	var wall_verts: PackedVector3Array = walls.get("vertices", PackedVector3Array())
 	var wall_indices: PackedInt32Array = walls.get("indices", PackedInt32Array())
@@ -462,7 +459,7 @@ static func create_building_mesh(mesh_data: Dictionary) -> ArrayMesh:
 		arrays[Mesh.ARRAY_INDEX] = wall_indices
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 		mesh.surface_set_material(0, mesh_data.get("wall_material"))
-		
+
 	# Surface 1: Roof
 	var roof_verts: PackedVector3Array = roof.get("vertices", PackedVector3Array())
 	var roof_indices: PackedInt32Array = roof.get("indices", PackedInt32Array())
@@ -476,8 +473,9 @@ static func create_building_mesh(mesh_data: Dictionary) -> ArrayMesh:
 		var s_idx = mesh.get_surface_count()
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 		mesh.surface_set_material(s_idx, mesh_data.get("roof_material"))
-		
+
 	return mesh
+
 
 ## Extract human-readable building name from OSM tags or POIs if present.
 static func get_building_display_name(building: Dictionary) -> String:
@@ -515,10 +513,18 @@ static func get_building_display_name(building: Dictionary) -> String:
 
 	# Fallback to specific building type if not generic
 	var b_type = str(tags.get("building", "")).strip_edges().to_lower()
-	if not b_type.is_empty() and b_type != "yes" and b_type != "no" and b_type != "roof" and b_type != "true":
+	if (
+		not b_type.is_empty()
+		and b_type != "yes"
+		and b_type != "no"
+		and b_type != "roof"
+		and b_type != "true"
+	):
 		return b_type.capitalize().replace("_", " ")
 
 	return ""
+
+
 ## Determine a clean node name for a building model in the Godot scene hierarchy.
 ## Uses the building's OSM name if available, falling back to "Building_<id>".
 static func get_building_node_name(building: Dictionary) -> String:
@@ -527,25 +533,29 @@ static func get_building_node_name(building: Dictionary) -> String:
 		return sanitize_node_name(display_name)
 	return "Building_" + str(building.get("id", "unknown"))
 
+
 ## Sanitize a string for use as a Godot Node name (replaces invalid characters: . : @ / " %)
 static func sanitize_node_name(raw_name: String) -> String:
 	var cleaned = raw_name.strip_edges()
-	var invalid_chars = [".", ":", "@", "/", "\"", "%"]
+	var invalid_chars = [".", ":", "@", "/", '"', "%"]
 	for c in invalid_chars:
 		cleaned = cleaned.replace(c, "_")
 	if cleaned.is_empty():
 		return "Building"
 	return cleaned
 
+
 ## Create a complete MeshInstance3D with optional StaticBody3D collision shape
-static func create_building_node(building: Dictionary, create_collider: bool = true) -> MeshInstance3D:
+static func create_building_node(
+	building: Dictionary, create_collider: bool = true
+) -> MeshInstance3D:
 	var mesh_data = build_building_mesh_data(building)
 	var mesh = create_building_mesh(mesh_data)
-	
+
 	var instance = MeshInstance3D.new()
 	instance.name = get_building_node_name(building)
 	instance.mesh = mesh
-	
+
 	# Store OSM metadata on the node for inspection, raycasting, and script access
 	var tags: Dictionary = building.get("tags", {})
 	var b_id = building.get("id")
@@ -572,8 +582,9 @@ static func create_building_node(building: Dictionary, create_collider: bool = t
 		col_shape.shape = mesh.create_trimesh_shape()
 		static_body.add_child(col_shape)
 		instance.add_child(static_body)
-		
+
 	return instance
+
 
 ## Create an extruded 2D footprint building node using Godot 4's native CSGPolygon3D.
 ## The building's transform is placed at its horizontal centroid and base elevation,
@@ -584,12 +595,12 @@ static func create_csg_building_node(building: Dictionary, create_collider: bool
 	var outer_rings: Array = building.get("outer_rings", [])
 	if outer_rings.is_empty():
 		return null
-		
+
 	var h_info = resolve_height(tags)
 	var base_y: float = h_info["base_y"]
 	var height: float = maxf(h_info["height"], 0.5)
 	var inner_rings: Array = building.get("inner_rings", [])
-	
+
 	var created_nodes: Array[CSGPolygon3D] = []
 	for ring_idx in range(outer_rings.size()):
 		var outer_pts: PackedVector3Array = outer_rings[ring_idx]
@@ -601,7 +612,7 @@ static func create_csg_building_node(building: Dictionary, create_collider: bool
 			unique_count = n_pts - 1
 		if unique_count < 3:
 			continue
-			
+
 		var center_x: float = 0.0
 		var center_z: float = 0.0
 		for i in range(unique_count):
@@ -609,28 +620,32 @@ static func create_csg_building_node(building: Dictionary, create_collider: bool
 			center_z += outer_pts[i].z
 		center_x /= float(unique_count)
 		center_z /= float(unique_count)
-		
+
 		var csg = CSGPolygon3D.new()
-		csg.name = get_building_node_name(building) if outer_rings.size() == 1 else (get_building_node_name(building) + "_" + str(ring_idx))
+		csg.name = (
+			get_building_node_name(building)
+			if outer_rings.size() == 1
+			else (get_building_node_name(building) + "_" + str(ring_idx))
+		)
 		csg.mode = CSGPolygon3D.MODE_DEPTH
 		csg.depth = height
 		csg.rotation_degrees = Vector3(90.0, 0.0, 0.0)
 		csg.position = Vector3(center_x, base_y, center_z)
-		
+
 		var poly_2d = PackedVector2Array()
 		poly_2d.resize(unique_count)
 		for i in range(unique_count):
 			var pt = outer_pts[i]
 			poly_2d[i] = Vector2(pt.x - center_x, pt.z - center_z)
 		csg.polygon = poly_2d
-		
+
 		csg.material = resolve_wall_material(tags, true)
-		
+
 		if create_collider:
 			csg.use_collision = true
 			csg.collision_layer = 1
 			csg.collision_mask = 1
-			
+
 		# Subtracted child holes for courtyards / lightwells
 		for hole_idx in range(inner_rings.size()):
 			var hole_pts: PackedVector3Array = inner_rings[hole_idx]
@@ -652,7 +667,7 @@ static func create_csg_building_node(building: Dictionary, create_collider: bool
 					h_poly[j] = Vector2(h_pt.x - center_x, h_pt.z - center_z)
 				hole_csg.polygon = h_poly
 				csg.add_child(hole_csg, true)
-				
+
 		# Store metadata
 		var b_id = building.get("id")
 		if b_id != null:
@@ -671,30 +686,34 @@ static func create_csg_building_node(building: Dictionary, create_collider: bool
 		if not tags.is_empty():
 			csg.set_meta("osm_tags", tags)
 		created_nodes.append(csg)
-		
+
 	if created_nodes.is_empty():
 		return null
 	if created_nodes.size() == 1:
 		return created_nodes[0]
-		
+
 	var multi_root = Node3D.new()
 	multi_root.name = get_building_node_name(building)
 	for c in created_nodes:
 		multi_root.add_child(c, true)
 	return multi_root
 
+
 ## Build a root Node3D containing batched building meshes grouped by material
 static func build_batched_buildings_node(buildings: Array, create_colliders: bool = true) -> Node3D:
 	return build_buildings_node(buildings, create_colliders, true)
+
 
 ## Build a root Node3D containing all buildings.
 ## When batched is true, combines building meshes by material into consolidated multi-surface meshes
 ## to drastically reduce draw calls and node count.
 ## When batched is false (default), retains 1 MeshInstance3D per building.
-static func build_buildings_node(buildings: Array, create_colliders: bool = true, batched: bool = false, use_csg: bool = false) -> Node3D:
+static func build_buildings_node(
+	buildings: Array, create_colliders: bool = true, batched: bool = false, use_csg: bool = false
+) -> Node3D:
 	var root = Node3D.new()
 	root.name = "Buildings"
-	
+
 	if use_csg:
 		for b in buildings:
 			if b is Dictionary:
@@ -702,7 +721,7 @@ static func build_buildings_node(buildings: Array, create_colliders: bool = true
 				if node != null:
 					root.add_child(node, true)
 		return root
-		
+
 	if not batched:
 		for b in buildings:
 			if b is Dictionary:
@@ -710,15 +729,15 @@ static func build_buildings_node(buildings: Array, create_colliders: bool = true
 				root.add_child(node, true)
 		return root
 	# Batched mode: group walls by wall material and roofs by roof material
-	var wall_batches: Dictionary = {} # mat_key -> { "material": StandardMaterial3D, "vertices": ..., "normals": ..., "uvs": ..., "indices": ... }
-	var roof_batches: Dictionary = {} # mat_key -> { "material": StandardMaterial3D, "vertices": ..., "normals": ..., "uvs": ..., "indices": ... }
-	
+	var wall_batches: Dictionary = {}  # mat_key -> { "material": StandardMaterial3D, "vertices": ..., "normals": ..., "uvs": ..., "indices": ... }
+	var roof_batches: Dictionary = {}  # mat_key -> { "material": StandardMaterial3D, "vertices": ..., "normals": ..., "uvs": ..., "indices": ... }
+
 	for b in buildings:
 		if not (b is Dictionary):
 			continue
 		var m_data = build_building_mesh_data(b)
 		var tags: Dictionary = b.get("tags", {})
-		
+
 		# 1. Accumulate walls
 		var w_key = get_wall_material_key(tags)
 		if not wall_batches.has(w_key):
@@ -736,13 +755,13 @@ static func build_buildings_node(buildings: Array, create_colliders: bool = true
 		var w_n: PackedVector3Array = w_walls.get("normals", PackedVector3Array())
 		var w_uv: PackedVector2Array = w_walls.get("uvs", PackedVector2Array())
 		var w_idx: PackedInt32Array = w_walls.get("indices", PackedInt32Array())
-		
+
 		w_target["vertices"].append_array(w_v)
 		w_target["normals"].append_array(w_n)
 		w_target["uvs"].append_array(w_uv)
 		for idx in w_idx:
 			w_target["indices"].append(w_base_idx + idx)
-			
+
 		# 2. Accumulate roofs
 		var r_key = get_roof_material_key(tags)
 		if not roof_batches.has(r_key):
@@ -760,13 +779,13 @@ static func build_buildings_node(buildings: Array, create_colliders: bool = true
 		var r_n: PackedVector3Array = r_roof.get("normals", PackedVector3Array())
 		var r_uv: PackedVector2Array = r_roof.get("uvs", PackedVector2Array())
 		var r_idx: PackedInt32Array = r_roof.get("indices", PackedInt32Array())
-		
+
 		r_target["vertices"].append_array(r_v)
 		r_target["normals"].append_array(r_n)
 		r_target["uvs"].append_array(r_uv)
 		for idx in r_idx:
 			r_target["indices"].append(r_base_idx + idx)
-			
+
 	# Create MeshInstance3D nodes for batched walls
 	for w_key in wall_batches.keys():
 		var batch = wall_batches[w_key]
@@ -774,22 +793,22 @@ static func build_buildings_node(buildings: Array, create_colliders: bool = true
 		var idxs: PackedInt32Array = batch["indices"]
 		if verts.is_empty() or idxs.is_empty():
 			continue
-			
+
 		var arrays = []
 		arrays.resize(Mesh.ARRAY_MAX)
 		arrays[Mesh.ARRAY_VERTEX] = verts
 		arrays[Mesh.ARRAY_NORMAL] = batch["normals"]
 		arrays[Mesh.ARRAY_TEX_UV] = batch["uvs"]
 		arrays[Mesh.ARRAY_INDEX] = idxs
-		
+
 		var mesh = ArrayMesh.new()
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 		mesh.surface_set_material(0, batch["material"])
-		
+
 		var mi = MeshInstance3D.new()
 		mi.name = "BuildingWalls_" + w_key.capitalize().replace(" ", "_")
 		mi.mesh = mesh
-		
+
 		if create_colliders:
 			var sb = StaticBody3D.new()
 			sb.name = "StaticBody3D"
@@ -798,9 +817,9 @@ static func build_buildings_node(buildings: Array, create_colliders: bool = true
 			cs.shape = mesh.create_trimesh_shape()
 			sb.add_child(cs)
 			mi.add_child(sb)
-			
+
 		root.add_child(mi)
-		
+
 	# Create MeshInstance3D nodes for batched roofs
 	for r_key in roof_batches.keys():
 		var batch = roof_batches[r_key]
@@ -808,22 +827,22 @@ static func build_buildings_node(buildings: Array, create_colliders: bool = true
 		var idxs: PackedInt32Array = batch["indices"]
 		if verts.is_empty() or idxs.is_empty():
 			continue
-			
+
 		var arrays = []
 		arrays.resize(Mesh.ARRAY_MAX)
 		arrays[Mesh.ARRAY_VERTEX] = verts
 		arrays[Mesh.ARRAY_NORMAL] = batch["normals"]
 		arrays[Mesh.ARRAY_TEX_UV] = batch["uvs"]
 		arrays[Mesh.ARRAY_INDEX] = idxs
-		
+
 		var mesh = ArrayMesh.new()
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 		mesh.surface_set_material(0, batch["material"])
-		
+
 		var mi = MeshInstance3D.new()
 		mi.name = "BuildingRoofs_" + r_key.capitalize().replace(" ", "_")
 		mi.mesh = mesh
-		
+
 		if create_colliders:
 			var sb = StaticBody3D.new()
 			sb.name = "StaticBody3D"
@@ -832,7 +851,7 @@ static func build_buildings_node(buildings: Array, create_colliders: bool = true
 			cs.shape = mesh.create_trimesh_shape()
 			sb.add_child(cs)
 			mi.add_child(sb)
-			
+
 		root.add_child(mi)
-		
+
 	return root

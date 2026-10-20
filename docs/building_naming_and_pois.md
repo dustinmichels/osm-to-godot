@@ -7,12 +7,14 @@ This document outlines the architecture, data pipeline, spatial matching algorit
 ## 1. Background & Problem Statement
 
 In OpenStreetMap (OSM), buildings are frequently mapped with varying levels of detail:
-* **Commercial & Public Buildings:** May have a direct `name` tag on the building way or relation (e.g. `name="Dunkin'"`).
-* **Mixed-Use & Multi-Tenant Structures:** Businesses, clinics, restaurants, and retail shops are often mapped as standalone `node` elements positioned *inside* the building boundary, rather than on the building footprint itself.
-* **Addressed Properties:** In many regions (e.g. MassGIS imports), residential and small commercial buildings carry street addresses (`addr:housenumber` + `addr:street`) but no human-readable building name.
-* **Ancillary Structures:** Secondary structures (garages, sheds, generic footprints) often have only functional tags (`building=garage`) or generic `building=yes` without addresses or names.
+
+- **Commercial & Public Buildings:** May have a direct `name` tag on the building way or relation (e.g. `name="Dunkin'"`).
+- **Mixed-Use & Multi-Tenant Structures:** Businesses, clinics, restaurants, and retail shops are often mapped as standalone `node` elements positioned _inside_ the building boundary, rather than on the building footprint itself.
+- **Addressed Properties:** In many regions (e.g. MassGIS imports), residential and small commercial buildings carry street addresses (`addr:housenumber` + `addr:street`) but no human-readable building name.
+- **Ancillary Structures:** Secondary structures (garages, sheds, generic footprints) often have only functional tags (`building=garage`) or generic `building=yes` without addresses or names.
 
 A naive importer querying only `way["building"]` and looking only for `tags.name` results in an overwhelming majority of structures named generically (e.g. `Building_29518082`). This system addresses this by:
+
 1. Fetching POI nodes in the export query.
 2. Spatially assigning POI nodes to the enclosing building footprints using 2D polygon containment.
 3. Applying a deterministic, multi-tier fallback ladder to resolve the best possible display and node name.
@@ -78,6 +80,7 @@ A naive importer querying only `way["building"]` and looking only for `tags.name
 The export query in `web/src/services/overpass.ts` requests both linear infrastructure, building geometries, and point-of-interest nodes:
 
 ### Overpass QL Query Union
+
 ```overpass
 [out:json][timeout:30];
 (
@@ -97,16 +100,18 @@ out body geom;
 ```
 
 ### Tag Classification (`isPoiTags`)
+
 When parsing raw XML responses (or filtering node streams), a node is classified as a POI if it contains any of the primary category keys or has an explicit `name` that is not a road or building:
-* `amenity` (restaurants, cafes, fire stations, police stations, clinics)
-* `shop` (supermarkets, convenience stores, bakeries)
-* `tourism` (hotels, museums, viewpoints)
-* `leisure` (parks, sports centers, playgrounds)
-* `office` (corporate offices, legal services, government offices)
-* `historic` (monuments, memorials, historic sites)
-* `healthcare` (hospitals, pharmacies, dentists)
-* `craft` (workshops, craftspeople)
-* Standalone `name` without `highway` or `building` tags
+
+- `amenity` (restaurants, cafes, fire stations, police stations, clinics)
+- `shop` (supermarkets, convenience stores, bakeries)
+- `tourism` (hotels, museums, viewpoints)
+- `leisure` (parks, sports centers, playgrounds)
+- `office` (corporate offices, legal services, government offices)
+- `historic` (monuments, memorials, historic sites)
+- `healthcare` (hospitals, pharmacies, dentists)
+- `craft` (workshops, craftspeople)
+- Standalone `name` without `highway` or `building` tags
 
 ---
 
@@ -129,17 +134,17 @@ In `addons/osm_importer/osm_parser.gd`, POI nodes are associated with building f
 
 When creating a building mesh node (`create_building_node` or `create_csg_building_node`), `BuildingBuilder.get_building_display_name(building)` evaluates tags in order of specificity:
 
-| Tier | Source | Priority Condition | Example Output |
-| :---: | :--- | :--- | :--- |
-| **1** | Direct `name` / `name:en` | Explicit building name tag | `"Dunkin'"` |
-| **2** | `addr:housename` | House or estate name | `"Rose Cottage"` |
-| **3** | `brand` | Brand or corporate identity | `"Target"` |
-| **4** | Enclosed POI | First named POI spatially inside footprint | `"Medford Police Department"`, `"7-Eleven"` |
-| **5a** | Full Street Address | Both `addr:housenumber` and `addr:street` present | `"9 Emerson Street"`, `"100;120 Main Street"` |
-| **5b** | Street Only | Only `addr:street` present | `"Main Street"` |
-| **5c** | House Number Only | Only `addr:housenumber` present | `"No. 154"` |
-| **6** | Specialized Type | Non-generic `building` tag (not `yes`, `no`, `roof`, `true`) | `"Garage"`, `"Industrial"` |
-| **7** | Fallback | No name, address, or specialized type | `"Building_29535893"` |
+|  Tier  | Source                    | Priority Condition                                           | Example Output                                |
+| :----: | :------------------------ | :----------------------------------------------------------- | :-------------------------------------------- |
+| **1**  | Direct `name` / `name:en` | Explicit building name tag                                   | `"Dunkin'"`                                   |
+| **2**  | `addr:housename`          | House or estate name                                         | `"Rose Cottage"`                              |
+| **3**  | `brand`                   | Brand or corporate identity                                  | `"Target"`                                    |
+| **4**  | Enclosed POI              | First named POI spatially inside footprint                   | `"Medford Police Department"`, `"7-Eleven"`   |
+| **5a** | Full Street Address       | Both `addr:housenumber` and `addr:street` present            | `"9 Emerson Street"`, `"100;120 Main Street"` |
+| **5b** | Street Only               | Only `addr:street` present                                   | `"Main Street"`                               |
+| **5c** | House Number Only         | Only `addr:housenumber` present                              | `"No. 154"`                                   |
+| **6**  | Specialized Type          | Non-generic `building` tag (not `yes`, `no`, `roof`, `true`) | `"Garage"`, `"Industrial"`                    |
+| **7**  | Fallback                  | No name, address, or specialized type                        | `"Building_29535893"`                         |
 
 ---
 
@@ -149,13 +154,13 @@ Godot node names must not contain special node-path delimiters. In `building_bui
 
 1. **Character Sanitization (`sanitize_node_name`):**
    Replaces invalid path characters with underscores:
-   * `.` $\to$ `_`
-   * `:` $\to$ `_`
-   * `@` $\to$ `_`
-   * `/` $\to$ `_`
-   * `"` $\to$ `_`
-   * `%` $\to$ `_`
-   For example, `Volsar, Inc.` becomes `Volsar, Inc_`.
+   - `.` $\to$ `_`
+   - `:` $\to$ `_`
+   - `@` $\to$ `_`
+   - `/` $\to$ `_`
+   - `"` $\to$ `_`
+   - `%` $\to$ `_`
+     For example, `Volsar, Inc.` becomes `Volsar, Inc_`.
 2. **Duplicate Disambiguation:**
    Multiple buildings or garages sharing the same name (e.g. multiple `Garage` outbuildings) are added using `root.add_child(node, true)`. Godot's built-in `force_readable_name` ensures duplicates are sequentially numbered (e.g. `Garage`, `Garage2`, `Garage3`) rather than generating `@Node@...` internal handles.
 
@@ -165,11 +170,11 @@ Godot node names must not contain special node-path delimiters. In `building_bui
 
 Every building node receives inspectable runtime metadata accessible via `node.get_meta(...)`:
 
-* `osm_id` (`float`/`int`): The OSM element ID.
-* `osm_name` (`String`): The resolved human-readable display name.
-* `osm_address` (`String`, optional): Formatted street address (if available).
-* `osm_pois` (`Array[Dictionary]`, optional): Array of all enclosed POI objects (including name, type, and tags).
-* `osm_tags` (`Dictionary`): The complete dictionary of raw OSM tags for runtime raycasting, tooltips, or gameplay scripts.
+- `osm_id` (`float`/`int`): The OSM element ID.
+- `osm_name` (`String`): The resolved human-readable display name.
+- `osm_address` (`String`, optional): Formatted street address (if available).
+- `osm_pois` (`Array[Dictionary]`, optional): Array of all enclosed POI objects (including name, type, and tags).
+- `osm_tags` (`Dictionary`): The complete dictionary of raw OSM tags for runtime raycasting, tooltips, or gameplay scripts.
 
 ---
 
@@ -177,9 +182,9 @@ Every building node receives inspectable runtime metadata accessible via `node.g
 
 In addition to transferring names to buildings, all POIs (including outdoor amenities, viewpoints, and monuments) are instantiated in the scene under a dedicated `POIs` node (`addons/osm_importer/scene_builder.gd`):
 
-* **Node Type:** `Marker3D` (lightweight, zero-draw-call, visible in editor 3D viewports).
-* **Position:** Placed at the projected ground-level coordinate $(X, 0, Z)$.
-* **Metadata:** Carries `osm_id`, `osm_name`, and `osm_tags` for selection and UI overlays.
+- **Node Type:** `Marker3D` (lightweight, zero-draw-call, visible in editor 3D viewports).
+- **Position:** Placed at the projected ground-level coordinate $(X, 0, Z)$.
+- **Metadata:** Carries `osm_id`, `osm_name`, and `osm_tags` for selection and UI overlays.
 
 ---
 
@@ -187,10 +192,10 @@ In addition to transferring names to buildings, all POIs (including outdoor amen
 
 In the Medford-Y reference dataset (47 buildings):
 
-| Category | Count | Before Implementation | After Implementation |
-| :--- | :---: | :--- | :--- |
-| **Direct OSM Names** | 1 | `Dunkin'` | `Dunkin'` |
-| **Names from POIs** | 8 | `Building_29641367_0`<br>`Building_29788042_0`<br>`Building_29536093_0`<br>`Building_29535923_0`<br>`Building_29518151_0`<br>`Building_29729490_0`<br>`Building_29825177_0` | `Medford Police Department`<br>`7-Eleven`<br>`Circle K`<br>`Medford Main Street Dental`<br>`Volsar, Inc_`<br>`Miracle-Ear`<br>`Mass General Brigham Community Physicians - Medford` |
-| **Names from Addresses** | 18 | `Building_29518082_0`<br>`Building_29518172_0`<br>`...` | `9 Emerson Street`<br>`20 Thomas Street`<br>`13;15 Emerson Street`<br>`14 Emerson Street`<br>`151 Main Street`<br>`153 Main Street`<br>`...` |
-| **Specialized Types** | 2 | `Building_29518181_0`<br>`Building_29935405_0` | `Garage`<br>`Garage2` |
-| **Generic Fallback** | 18 | `Building_<id>` | `Building_<id>` (sheds, unaddressed rear parcels) |
+| Category                 | Count | Before Implementation                                                                                                                                                       | After Implementation                                                                                                                                                                |
+| :----------------------- | :---: | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Direct OSM Names**     |   1   | `Dunkin'`                                                                                                                                                                   | `Dunkin'`                                                                                                                                                                           |
+| **Names from POIs**      |   8   | `Building_29641367_0`<br>`Building_29788042_0`<br>`Building_29536093_0`<br>`Building_29535923_0`<br>`Building_29518151_0`<br>`Building_29729490_0`<br>`Building_29825177_0` | `Medford Police Department`<br>`7-Eleven`<br>`Circle K`<br>`Medford Main Street Dental`<br>`Volsar, Inc_`<br>`Miracle-Ear`<br>`Mass General Brigham Community Physicians - Medford` |
+| **Names from Addresses** |  18   | `Building_29518082_0`<br>`Building_29518172_0`<br>`...`                                                                                                                     | `9 Emerson Street`<br>`20 Thomas Street`<br>`13;15 Emerson Street`<br>`14 Emerson Street`<br>`151 Main Street`<br>`153 Main Street`<br>`...`                                        |
+| **Specialized Types**    |   2   | `Building_29518181_0`<br>`Building_29935405_0`                                                                                                                              | `Garage`<br>`Garage2`                                                                                                                                                               |
+| **Generic Fallback**     |  18   | `Building_<id>`                                                                                                                                                             | `Building_<id>` (sheds, unaddressed rear parcels)                                                                                                                                   |
