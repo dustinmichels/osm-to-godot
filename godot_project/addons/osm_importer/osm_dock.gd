@@ -209,6 +209,24 @@ func log_import_success(stats: Dictionary, metadata: Dictionary, save_path: Stri
 	)
 	log_entry += "  [color=#94a3b8]• Saved to: %s[/color]\n" % save_path
 
+	var attribution_str = str(metadata.get("attribution", "")).strip_edges()
+	var license_str = str(metadata.get("license", "")).strip_edges()
+	if (
+		attribution_str.is_empty()
+		and metadata.has("sourceMetadata")
+		and typeof(metadata["sourceMetadata"]) == TYPE_DICTIONARY
+	):
+		attribution_str = str(metadata["sourceMetadata"].get("attribution", "")).strip_edges()
+	if (
+		license_str.is_empty()
+		and metadata.has("sourceMetadata")
+		and typeof(metadata["sourceMetadata"]) == TYPE_DICTIONARY
+	):
+		license_str = str(metadata["sourceMetadata"].get("license", "")).strip_edges()
+	if not attribution_str.is_empty() or not license_str.is_empty():
+		var lic_part = (" | License: %s" % license_str) if not license_str.is_empty() else ""
+		log_entry += "  [color=#94a3b8]• Source: %s%s[/color]\n" % [attribution_str, lic_part]
+
 	log_display.append_text(log_entry)
 
 

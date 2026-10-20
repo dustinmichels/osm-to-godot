@@ -5,10 +5,18 @@ import SearchBar from '@/components/SearchBar.vue'
 import TelemetryPanel from '@/components/TelemetryPanel.vue'
 import ExportControls from '@/components/ExportControls.vue'
 import BasemapSelector from '@/components/BasemapSelector.vue'
+import EditorToolbar from '@/components/EditorToolbar.vue'
+import LayerPanel from '@/components/LayerPanel.vue'
+import FeatureInspector from '@/components/FeatureInspector.vue'
+import EditorLegend from '@/components/EditorLegend.vue'
+import { useEditorModel } from '@/composables/useEditorModel'
 import { useBBox, type BoundingBox } from '@/composables/useBBox'
 import { parseUrlState, useUrlSync } from '@/composables/useUrlSync'
-import type { CameraChangePayload } from '@/components/MapView.vue'
+import type { CameraChangePayload } from '@/composables/editor/types'
+import { useWorkspace } from '@/composables/useWorkspace'
 
+const { workspace, setWorkspace } = useWorkspace()
+const { selectedFeature, selectFeature, viewMode, isDirty } = useEditorModel()
 const mapViewRef = ref<InstanceType<typeof MapView> | null>(null)
 const { initDefaultBBox, hasBBox, centroid, isSelectionMode, toggleSelectionMode, setBBox } = useBBox()
 
@@ -159,8 +167,29 @@ function resetBoxToCenter() {
         </div>
       </div>
 
-      <!-- Geocoder Search Bar -->
-      <div class="header-search">
+      <!-- Workspace Navigation -->
+      <nav class="workspace-nav" aria-label="Workspace mode">
+        <button
+          type="button"
+          class="workspace-tab"
+          :class="{ active: workspace === 'selector' }"
+          @click="setWorkspace('selector')"
+        >
+          Area Selector
+        </button>
+        <button
+          type="button"
+          class="workspace-tab"
+          :class="{ active: workspace === 'editor' }"
+          @click="setWorkspace('editor')"
+        >
+          <span>2D Editor</span>
+          <span v-if="isDirty" class="tab-unsaved-dot" title="Unsaved edits" />
+        </button>
+      </nav>
+
+      <!-- Geocoder Search Bar (Selector only) -->
+      <div v-if="workspace === 'selector'" class="header-search">
         <SearchBar
           :center-lat="centroid?.lat"
           :center-lon="centroid?.lon"
@@ -170,8 +199,8 @@ function resetBoxToCenter() {
 
       <!-- Top Toolbar Actions -->
       <div class="header-actions">
-        <button
-          type="button"
+        <template v-if="workspace === 'selector'">
+          <button
           class="action-btn"
           :class="{ 'is-active': isSelectionMode }"
           :title="isSelectionMode ? 'Click and drag on map to draw box' : 'Draw new selection rectangle'"
@@ -226,19 +255,43 @@ function resetBoxToCenter() {
           </svg>
           <span>{{ isCopied ? 'Copied Link' : 'Copy Link' }}</span>
         </button>
+        </template>
+
+        <!-- Editor Toolbar Actions -->
+        <template v-else-if="workspace === 'editor'">
+          <EditorToolbar
+            @fit-data="mapViewRef?.fitImportedData()"
+            @return-area="mapViewRef?.returnToSelectedArea()"
+          />
+        </template>
 
         <BasemapSelector />
       </div>
     </header>
 
-    <!-- Floating Left Sidebar Dock -->
-    <aside class="sidebar-dock">
+    <!-- Floating Left Sidebar Dock for Selector -->
+    <aside v-if="workspace === 'selector'" class="sidebar-dock">
       <TelemetryPanel />
       <ExportControls />
     </aside>
 
+    <!-- Floating Left Sidebar Dock for Editor -->
+    <aside v-else-if="workspace === 'editor'" class="sidebar-dock editor-sidebar-dock">
+      <LayerPanel />
+    </aside>
+
+    <!-- Floating Right Inspector for Editor -->
+    <aside v-if="workspace === 'editor' && selectedFeature" class="inspector-dock">
+      <FeatureInspector :feature="selectedFeature" @close="selectFeature(null)" />
+    </aside>
+
+    <!-- Editor Legend at Bottom Right -->
+    <div v-if="workspace === 'editor'" class="editor-legend-dock">
+      <EditorLegend :view-mode="viewMode" />
+    </div>
+
     <!-- Example Buttons along Right Side -->
-    <aside class="examples-dock">
+    <aside v-if="workspace === 'selector'" class="examples-dock">
       <div class="examples-header">
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" class="examples-icon">
           <path d="M10 2l2.5 5.5L18 8.5l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-1L10 2z" stroke-width="1.6" stroke-linejoin="round" />
@@ -350,6 +403,51 @@ body,
   color: #94a3b8;
   font-weight: 500;
 }
+
+.workspace-nav {
+  display: flex;
+  background: rgba(18, 22, 28, 0.94);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 3px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.workspace-tab {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.workspace-tab:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.workspace-tab.active {
+  background: #2563eb;
+  color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+.tab-unsaved-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f59e0b;
+  box-shadow: 0 0 5px rgba(245, 158, 11, 0.6);
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
 
 .header-search {
   flex: 1;
@@ -491,6 +589,23 @@ body,
   scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
 }
 
+.editor-sidebar-dock {
+  width: 260px;
+}
+
+.inspector-dock {
+  position: absolute;
+  top: 76px;
+  right: 16px;
+  z-index: 20;
+}
+
+.editor-legend-dock {
+  position: absolute;
+  bottom: 24px;
+  right: 16px;
+  z-index: 20;
+}
 @media (max-width: 900px) {
   .examples-dock {
     display: none;

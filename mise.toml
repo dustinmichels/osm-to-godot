@@ -30,7 +30,7 @@ raw = true
 run = "./scripts/convert-geojson.sh"
 
 [tasks.fetch-overture]
-description = "Fetch Overture Maps buildings and roads as GeoJSON for a bounding box"
+description = "Fetch Overture Maps buildings, roads, and POIs as GeoJSON for a bounding box"
 run = "python3 scripts/fetch_overture.py"
 
 [tasks.clear-scene]

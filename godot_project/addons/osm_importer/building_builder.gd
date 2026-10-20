@@ -116,17 +116,18 @@ static func resolve_height(tags: Dictionary) -> Dictionary:
 	var has_explicit_height = false
 
 	if tags.has("height"):
-		var h = parse_numeric_dimension(tags["height"], 0.0)
-		if h > 0.0:
+		var h = parse_numeric_dimension(tags["height"], -1.0)
+		if h >= 0.0:
 			height = h
 			has_explicit_height = true
 
 	if not has_explicit_height and tags.has("building:levels"):
-		var levels = parse_numeric_dimension(tags["building:levels"], 0.0)
-		if levels > 0.0:
+		var levels = parse_numeric_dimension(tags["building:levels"], -1.0)
+		if levels >= 0.0:
 			height = levels * LEVEL_HEIGHT_METERS
+			has_explicit_height = true
 
-	if height <= 0.0:
+	if not has_explicit_height:
 		var b_type: String = str(tags.get("building", "yes")).to_lower()
 		if SEMANTIC_BUILDING_HEIGHTS.has(b_type):
 			height = SEMANTIC_BUILDING_HEIGHTS[b_type]
@@ -141,7 +142,12 @@ static func resolve_height(tags: Dictionary) -> Dictionary:
 	else:
 		roof_y = base_y + height
 
-	return {"base_y": base_y, "roof_y": roof_y, "height": roof_y - base_y}
+	return {
+		"base_y": base_y,
+		"roof_y": roof_y,
+		"height": roof_y - base_y,
+		"is_explicit": has_explicit_height
+	}
 
 
 # --- 3.4 Materials & Color Mapping ---
@@ -279,8 +285,54 @@ static func get_roof_material_key(tags: Dictionary) -> String:
 # --- 3.2 & 3.3 Mesh Construction (Roof & Walls) ---
 
 
+## Determine whether a feature dictionary represents a building rather than a road/sidewalk/surface
+static func is_building_feature(building: Dictionary) -> bool:
+	if building.is_empty():
+		return false
+	if building.get("is_authoritative_surface", false):
+		return false
+	if building.get("is_semantic_only", false):
+		return false
+	var role = str(building.get("role", "")).strip_edges().to_lower()
+	var kind = str(building.get("kind", "")).strip_edges().to_lower()
+	var tags = building.get("tags", {})
+	if tags is Dictionary:
+		if role.is_empty():
+			role = str(tags.get("role", "")).strip_edges().to_lower()
+		if kind.is_empty():
+			kind = str(tags.get("kind", "")).strip_edges().to_lower()
+	const NON_BUILDING_ROLES = [
+		"carriageway",
+		"road",
+		"street",
+		"sidewalk",
+		"footway",
+		"pedestrian",
+		"path",
+		"bike_lane",
+		"cycleway",
+		"bike_facility",
+		"junction",
+		"intersection",
+		"parking",
+		"median",
+		"buffer",
+		"verge",
+		"centerline",
+		"unsupported"
+	]
+	if role in NON_BUILDING_ROLES or kind in NON_BUILDING_ROLES:
+		return false
+	if tags is Dictionary and tags.has("highway") and not tags.has("building"):
+		return false
+	return true
+
+
 ## Build raw geometry data for a building feature dictionary
 static func build_building_mesh_data(building: Dictionary) -> Dictionary:
+	if not is_building_feature(building):
+		return {}
+
 	var tags: Dictionary = building.get("tags", {})
 	var outer_rings: Array = building.get("outer_rings", [])
 	var inner_rings: Array = building.get("inner_rings", [])
@@ -320,10 +372,14 @@ static func build_building_mesh_data(building: Dictionary) -> Dictionary:
 	# Each outer ring defines a polygon boundary; inner rings fall inside outer rings.
 	for outer in outer_rings:
 		if outer is PackedVector3Array and outer.size() >= 3:
-			var tri_result = EarcutModule.triangulate_polygon_3d(outer, inner_rings, roof_y)
+			var matched_inners = (
+				filter_inners_for_outer(outer, inner_rings)
+				if outer_rings.size() > 1
+				else inner_rings
+			)
+			var tri_result = EarcutModule.triangulate_polygon_3d(outer, matched_inners, roof_y)
 			var pts: PackedVector3Array = tri_result["points"]
 			var idxs: PackedInt32Array = tri_result["indices"]
-
 			var base_index = roof_vertices.size()
 			for pt in pts:
 				roof_vertices.append(pt)
@@ -357,6 +413,28 @@ static func build_building_mesh_data(building: Dictionary) -> Dictionary:
 	}
 
 
+## Match inner rings (holes) to an outer ring based on 2D horizontal containment
+static func filter_inners_for_outer(
+	outer: PackedVector3Array, inner_rings: Array
+) -> Array[PackedVector3Array]:
+	var matched: Array[PackedVector3Array] = []
+	if inner_rings.is_empty() or outer.size() < 3:
+		return matched
+
+	var outer_2d = PackedVector2Array()
+	outer_2d.resize(outer.size())
+	for i in range(outer.size()):
+		outer_2d[i] = Vector2(outer[i].x, outer[i].z)
+
+	for hole in inner_rings:
+		if hole is PackedVector3Array and hole.size() >= 3:
+			var test_pt = Vector2(hole[0].x, hole[0].z)
+			if Geometry2D.is_point_in_polygon(test_pt, outer_2d):
+				matched.append(hole)
+
+	return matched
+
+
 ## Extrude a perimeter ring into vertical quads
 static func _extrude_wall_ring(
 	ring: PackedVector3Array,
@@ -368,6 +446,9 @@ static func _extrude_wall_ring(
 	out_uvs: PackedVector2Array,
 	out_indices: PackedInt32Array
 ) -> void:
+	if roof_y <= base_y:
+		return
+
 	var pts = ring
 	if is_hole:
 		pts = ring.duplicate()
@@ -480,13 +561,29 @@ static func create_building_mesh(mesh_data: Dictionary) -> ArrayMesh:
 ## Extract human-readable building name from OSM tags or POIs if present.
 static func get_building_display_name(building: Dictionary) -> String:
 	var tags: Dictionary = building.get("tags", {})
-	if tags.has("name") and not str(tags.get("name")).strip_edges().is_empty():
+	if (
+		tags.has("name")
+		and not str(tags.get("name")).strip_edges().is_empty()
+		and str(tags.get("name")).strip_edges() != "<null>"
+	):
 		return str(tags.get("name")).strip_edges()
-	if tags.has("name:en") and not str(tags.get("name:en")).strip_edges().is_empty():
+	if (
+		tags.has("name:en")
+		and not str(tags.get("name:en")).strip_edges().is_empty()
+		and str(tags.get("name:en")).strip_edges() != "<null>"
+	):
 		return str(tags.get("name:en")).strip_edges()
-	if tags.has("addr:housename") and not str(tags.get("addr:housename")).strip_edges().is_empty():
+	if (
+		tags.has("addr:housename")
+		and not str(tags.get("addr:housename")).strip_edges().is_empty()
+		and str(tags.get("addr:housename")).strip_edges() != "<null>"
+	):
 		return str(tags.get("addr:housename")).strip_edges()
-	if tags.has("brand") and not str(tags.get("brand")).strip_edges().is_empty():
+	if (
+		tags.has("brand")
+		and not str(tags.get("brand")).strip_edges().is_empty()
+		and str(tags.get("brand")).strip_edges() != "<null>"
+	):
 		return str(tags.get("brand")).strip_edges()
 
 	# Associated POI name if a POI node falls inside this building footprint
@@ -495,13 +592,33 @@ static func get_building_display_name(building: Dictionary) -> String:
 		for poi in pois:
 			if poi is Dictionary:
 				var p_name = str(poi.get("name", "")).strip_edges()
-				if p_name.is_empty():
+				if (p_name.is_empty() or p_name == "<null>") and poi.has("tags"):
 					var p_tags: Dictionary = poi.get("tags", {})
-					p_name = str(p_tags.get("name", p_tags.get("brand", ""))).strip_edges()
-				if not p_name.is_empty():
+					if p_tags.has("name") and p_tags["name"] != null:
+						p_name = str(p_tags["name"]).strip_edges()
+					elif p_tags.has("brand"):
+						var b = p_tags["brand"]
+						if typeof(b) == TYPE_DICTIONARY:
+							var b_names = b.get("names", {})
+							if typeof(b_names) == TYPE_DICTIONARY:
+								p_name = (
+									str(b_names.get("primary", b_names.get("common", "")))
+									. strip_edges()
+								)
+						elif b != null:
+							p_name = str(b).strip_edges()
+					elif p_tags.has("addr:full") and p_tags["addr:full"] != null:
+						p_name = str(p_tags["addr:full"]).strip_edges()
+				if not p_name.is_empty() and p_name != "<null>":
 					return p_name
 
 	# Fallback to street address
+	if (
+		tags.has("addr:full")
+		and not str(tags.get("addr:full")).strip_edges().is_empty()
+		and str(tags.get("addr:full")).strip_edges() != "<null>"
+	):
+		return str(tags.get("addr:full")).strip_edges()
 	var housenumber = str(tags.get("addr:housenumber", "")).strip_edges()
 	var street = str(tags.get("addr:street", "")).strip_edges()
 	if not housenumber.is_empty() and not street.is_empty():
@@ -549,6 +666,8 @@ static func sanitize_node_name(raw_name: String) -> String:
 static func create_building_node(
 	building: Dictionary, create_collider: bool = true
 ) -> MeshInstance3D:
+	if not is_building_feature(building):
+		return null
 	var mesh_data = build_building_mesh_data(building)
 	var mesh = create_building_mesh(mesh_data)
 
@@ -592,13 +711,21 @@ static func create_building_node(
 ## Inner rings (courtyards/holes) are cut using child CSGPolygon3D nodes with OPERATION_SUBTRACTION.
 static func create_csg_building_node(building: Dictionary, create_collider: bool = true) -> Node3D:
 	var tags: Dictionary = building.get("tags", {})
+	if not is_building_feature(building):
+		return null
+
 	var outer_rings: Array = building.get("outer_rings", [])
 	if outer_rings.is_empty():
 		return null
 
 	var h_info = resolve_height(tags)
 	var base_y: float = h_info["base_y"]
-	var height: float = maxf(h_info["height"], 0.5)
+	var height: float = h_info["height"]
+	if height <= 0.0:
+		if h_info.get("is_explicit", false):
+			height = 0.01  # Minimal slab for CSG extrusion of explicit zero height
+		else:
+			height = DEFAULT_BUILDING_HEIGHT
 	var inner_rings: Array = building.get("inner_rings", [])
 
 	var created_nodes: Array[CSGPolygon3D] = []
@@ -647,8 +774,13 @@ static func create_csg_building_node(building: Dictionary, create_collider: bool
 			csg.collision_mask = 1
 
 		# Subtracted child holes for courtyards / lightwells
-		for hole_idx in range(inner_rings.size()):
-			var hole_pts: PackedVector3Array = inner_rings[hole_idx]
+		var matched_holes = (
+			filter_inners_for_outer(outer_pts, inner_rings)
+			if outer_rings.size() > 1
+			else inner_rings
+		)
+		for hole_idx in range(matched_holes.size()):
+			var hole_pts: PackedVector3Array = matched_holes[hole_idx]
 			var h_count = hole_pts.size()
 			var h_unique = h_count
 			if h_count >= 3 and hole_pts[0].distance_squared_to(hole_pts[h_count - 1]) < 0.0001:
@@ -724,16 +856,20 @@ static func build_buildings_node(
 
 	if not batched:
 		for b in buildings:
-			if b is Dictionary:
+			if b is Dictionary and is_building_feature(b):
 				var node = create_building_node(b, create_colliders)
-				root.add_child(node, true)
+				if node != null:
+					root.add_child(node, true)
 		return root
+
 	# Batched mode: group walls by wall material and roofs by roof material
 	var wall_batches: Dictionary = {}  # mat_key -> { "material": StandardMaterial3D, "vertices": ..., "normals": ..., "uvs": ..., "indices": ... }
 	var roof_batches: Dictionary = {}  # mat_key -> { "material": StandardMaterial3D, "vertices": ..., "normals": ..., "uvs": ..., "indices": ... }
 
 	for b in buildings:
 		if not (b is Dictionary):
+			continue
+		if not is_building_feature(b):
 			continue
 		var m_data = build_building_mesh_data(b)
 		var tags: Dictionary = b.get("tags", {})

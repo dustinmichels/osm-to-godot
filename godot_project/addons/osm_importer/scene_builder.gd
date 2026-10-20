@@ -22,11 +22,32 @@ static func build_city_scene(
 	use_csg_buildings: bool = false,
 	pois_data: Array = [],
 	spawn_player: bool = true,
-	create_ground: bool = true
+	create_ground: bool = true,
+	scene_metadata: Dictionary = {}
 ) -> Node3D:
 	var city_root = Node3D.new()
 	city_root.name = "CityRoot"
 
+	if not scene_metadata.is_empty():
+		var attr = str(scene_metadata.get("attribution", "")).strip_edges()
+		var lic = str(scene_metadata.get("license", "")).strip_edges()
+		if (
+			attr.is_empty()
+			and scene_metadata.has("sourceMetadata")
+			and typeof(scene_metadata["sourceMetadata"]) == TYPE_DICTIONARY
+		):
+			attr = str(scene_metadata["sourceMetadata"].get("attribution", "")).strip_edges()
+		if (
+			lic.is_empty()
+			and scene_metadata.has("sourceMetadata")
+			and typeof(scene_metadata["sourceMetadata"]) == TYPE_DICTIONARY
+		):
+			lic = str(scene_metadata["sourceMetadata"].get("license", "")).strip_edges()
+		if not attr.is_empty():
+			city_root.set_meta("source_attribution", attr)
+		if not lic.is_empty():
+			city_root.set_meta("source_license", lic)
+		city_root.set_meta("scene_metadata", scene_metadata)
 	# 1. World Environment with Procedural Sky & Ambient Light
 	var env_node = WorldEnvironment.new()
 	env_node.name = "WorldEnvironment"
@@ -201,6 +222,10 @@ static func _determine_player_spawn_point(
 	if not roads_data.is_empty():
 		for road in roads_data:
 			var pts = road.get("points", [])
+			if pts.is_empty():
+				var outer_rings: Array = road.get("outer_rings", [])
+				if not outer_rings.is_empty() and outer_rings[0] is PackedVector3Array:
+					pts = outer_rings[0]
 			for pt in pts:
 				var dist_sq = Vector2(pt.x - center.x, pt.z - center.z).length_squared()
 				if dist_sq < min_dist_sq:

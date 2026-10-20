@@ -1,14 +1,22 @@
 import { ref, computed } from 'vue'
 import type { StyleSpecification } from 'maplibre-gl'
 
-export type MapStyleId = 'vector-liberty' | 'vector-voyager' | 'vector-dark' | 'raster-osm'
+export type MapStyleId =
+  | 'neutral-muted'
+  | 'none-hidden'
+  | 'vector-liberty'
+  | 'vector-voyager'
+  | 'vector-dark'
+  | 'raster-osm'
+
+export type BasemapStatus = 'available' | 'loading' | 'degraded' | 'offline' | 'fallback'
 
 export interface MapStyleOption {
   id: MapStyleId
   label: string
   shortLabel: string
   description: string
-  type: 'vector' | 'raster'
+  type: 'neutral' | 'hidden' | 'vector' | 'raster'
   style: string | StyleSpecification
 }
 
@@ -35,7 +43,50 @@ export const OSM_RASTER_STYLE: StyleSpecification = {
   ]
 }
 
+export const NEUTRAL_MUTED_STYLE: StyleSpecification = {
+  version: 8,
+  sources: {},
+  layers: [
+    {
+      id: 'background-neutral',
+      type: 'background',
+      paint: {
+        'background-color': '#181b20'
+      }
+    }
+  ]
+}
+
+export const HIDDEN_BLANK_STYLE: StyleSpecification = {
+  version: 8,
+  sources: {},
+  layers: [
+    {
+      id: 'background-hidden',
+      type: 'background',
+      paint: {
+        'background-color': '#0d1117'
+      }
+    }
+  ]
+}
 export const MAP_STYLES: MapStyleOption[] = [
+  {
+    id: 'neutral-muted',
+    label: 'Neutral Muted',
+    shortLabel: 'Neutral',
+    description: 'Clean solid background so basemap tiles never look like editable features',
+    type: 'neutral',
+    style: NEUTRAL_MUTED_STYLE
+  },
+  {
+    id: 'none-hidden',
+    label: 'Hidden (No Basemap)',
+    shortLabel: 'Hidden',
+    description: 'Deep black background with basemap tiles completely hidden',
+    type: 'hidden',
+    style: HIDDEN_BLANK_STYLE
+  },
   {
     id: 'vector-liberty',
     label: 'Vector (Liberty)',
@@ -87,6 +138,9 @@ function getInitialStyleId(): MapStyleId {
 
 // Global state across components
 const currentStyleId = ref<MapStyleId>(getInitialStyleId())
+const basemapStatus = ref<BasemapStatus>('available')
+const basemapError = ref<string | null>(null)
+const basemapNoticeDismissed = ref(false)
 
 export function useMapStyle() {
   const currentStyle = computed<MapStyleOption>(() => {
@@ -94,7 +148,8 @@ export function useMapStyle() {
   })
 
   const isVector = computed<boolean>(() => currentStyle.value.type === 'vector')
-
+  const isLocalStyle = computed<boolean>(() => currentStyle.value.type === 'neutral' || currentStyle.value.type === 'hidden')
+  const isExternalStyle = computed<boolean>(() => !isLocalStyle.value)
   function setStyle(id: MapStyleId) {
     if (!MAP_STYLES.some(s => s.id === id)) return
     currentStyleId.value = id
@@ -103,6 +158,38 @@ export function useMapStyle() {
     } catch {
       // Ignore storage errors
     }
+    if (isLocalStyle.value) {
+      basemapStatus.value = 'available'
+      basemapError.value = null
+    } else {
+      basemapStatus.value = 'loading'
+    }
+    basemapNoticeDismissed.value = false
+  }
+
+  function reportBasemapFailure(reason: string, options?: { autoFallback?: boolean }) {
+    basemapNoticeDismissed.value = false
+    if (options?.autoFallback) {
+      setStyle('neutral-muted')
+      basemapStatus.value = 'fallback'
+    } else {
+      basemapStatus.value = isExternalStyle.value ? 'degraded' : 'available'
+    }
+    basemapError.value = reason
+  }
+  function reportBasemapSuccess() {
+    basemapError.value = null
+    basemapStatus.value = 'available'
+  }
+
+  function dismissBasemapNotice() {
+    basemapNoticeDismissed.value = true
+  }
+
+  function resetBasemapStatus() {
+    basemapStatus.value = 'available'
+    basemapError.value = null
+    basemapNoticeDismissed.value = false
   }
 
   function toggleType() {
@@ -118,6 +205,15 @@ export function useMapStyle() {
     currentStyleId,
     currentStyle,
     isVector,
+    isLocalStyle,
+    isExternalStyle,
+    basemapStatus,
+    basemapError,
+    basemapNoticeDismissed,
+    reportBasemapFailure,
+    reportBasemapSuccess,
+    dismissBasemapNotice,
+    resetBasemapStatus,
     setStyle,
     toggleType
   }

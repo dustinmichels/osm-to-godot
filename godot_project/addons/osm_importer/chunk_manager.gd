@@ -23,21 +23,31 @@ static func get_building_center(building: Dictionary) -> Vector3:
 	var outer_rings: Array = building.get("outer_rings", [])
 	if outer_rings.is_empty():
 		return Vector3.ZERO
-	var ring: PackedVector3Array = outer_rings[0]
-	if ring.is_empty():
-		return Vector3.ZERO
-
 	var sum_v = Vector3.ZERO
-	for pt in ring:
-		sum_v += pt
-	return sum_v / float(ring.size())
+	var count = 0
+	for ring in outer_rings:
+		if ring is PackedVector3Array:
+			for pt in ring:
+				sum_v += pt
+				count += 1
+	if count == 0:
+		return Vector3.ZERO
+	return sum_v / float(count)
 
 
 ## Calculate centroid / center of a road polyline in XZ plane
 static func get_road_center(road: Dictionary) -> Vector3:
 	var points: PackedVector3Array = road.get("points", PackedVector3Array())
 	if points.is_empty():
-		return Vector3.ZERO
+		var outer_rings: Array = road.get("outer_rings", [])
+		if (
+			not outer_rings.is_empty()
+			and outer_rings[0] is PackedVector3Array
+			and not outer_rings[0].is_empty()
+		):
+			points = outer_rings[0]
+		else:
+			return Vector3.ZERO
 	var sum_v = Vector3.ZERO
 	for pt in points:
 		sum_v += pt

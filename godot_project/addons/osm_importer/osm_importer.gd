@@ -147,7 +147,8 @@ func _on_import_received(parsed_data: Dictionary, raw_payload: Dictionary) -> vo
 			use_spatial_chunks,
 			use_csg,
 			parsed_data.get("pois", []),
-			spawn_player
+			spawn_player,
+			metadata
 		)
 
 
@@ -185,6 +186,20 @@ func _on_generate_requested(create_colliders: bool, custom_path: String = "") ->
 		file = FileAccess.open(fallback_path, FileAccess.READ)
 		if file == null:
 			fallback_path = "../tests/fixtures/medford_y_overture.geojson"
+			file = FileAccess.open(fallback_path, FileAccess.READ)
+		if file != null:
+			path = fallback_path
+	elif (
+		file == null
+		and (
+			path == "res://data/editor_export.geojson"
+			or path == "res://data/editor_scene_export.geojson"
+		)
+	):
+		var fallback_path = "res://data/editor_scene_export.geojson"
+		file = FileAccess.open(fallback_path, FileAccess.READ)
+		if file == null:
+			fallback_path = "../tests/fixtures/editor_scene_export.geojson"
 			file = FileAccess.open(fallback_path, FileAccess.READ)
 		if file != null:
 			path = fallback_path
@@ -234,7 +249,8 @@ func _on_generate_requested(create_colliders: bool, custom_path: String = "") ->
 		use_spatial_chunks,
 		use_csg,
 		parsed.get("pois", []),
-		spawn_player
+		spawn_player,
+		parsed.get("metadata", {})
 	)
 
 
@@ -245,7 +261,8 @@ func _generate_3d_scene(
 	use_spatial_chunks: bool = false,
 	use_csg: bool = false,
 	pois: Array = [],
-	spawn_player: bool = true
+	spawn_player: bool = true,
+	scene_metadata: Dictionary = {}
 ) -> void:
 	if buildings.is_empty():
 		push_warning("[OSM Importer] No buildings found to generate.")
@@ -264,7 +281,9 @@ func _generate_3d_scene(
 		1500.0,
 		use_csg,
 		pois,
-		spawn_player
+		spawn_player,
+		true,
+		scene_metadata
 	)
 	var err = OSMSceneBuilderClass.save_city_scene(city_root, scene_path)
 	if err != OK:

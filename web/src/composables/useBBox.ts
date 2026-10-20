@@ -202,6 +202,12 @@ export function useBBox() {
     isSelectionMode.value = false
   }
 
+  function cancelDrawing() {
+    activeHandle.value = null
+    isDrawing.value = false
+    isSelectionMode.value = false
+  }
+
   // Pre-seed a default bbox around an urban area (e.g. 600m x 600m)
   function initDefaultBBox(centerLon = 4.8952, centerLat = 52.3702, radiusMeters = 300) {
     const dLatRad = radiusMeters / EARTH_RADIUS_METERS
@@ -234,6 +240,7 @@ export function useBBox() {
     setBBox,
     updateHandlePosition,
     clearBBox,
+    cancelDrawing,
     toggleSelectionMode,
     initDefaultBBox
   }

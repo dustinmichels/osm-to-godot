@@ -4,6 +4,7 @@ extends RefCounted
 ## Procedural road network and cross-section generator for Godot 4.
 ## Implements width inference, surface classification, bike lane detection/slicing,
 ## 2D/3D polyline ribbon extrusion with miter clamping, and vertical layering/bridges.
+const EarcutModule = preload("earcut.gd")
 
 const HIGHWAY_DEFAULTS: Dictionary = {
 	"motorway": {"width": 14.0, "lanes": 4},
@@ -119,11 +120,18 @@ static var _material_cache: Dictionary = {}
 ## Resolve surface type string from tags with sensible highway fallbacks
 static func resolve_surface_type(tags: Dictionary) -> String:
 	var raw_surface = str(tags.get("surface", "")).strip_edges().to_lower()
+	var highway = str(tags.get("highway", "")).strip_edges().to_lower()
+	var subclass = str(tags.get("subclass", "")).strip_edges().to_lower()
+
+	# Pedestrian ways / sidewalks with generic "paved" or unspecified surface resolve to concrete
+	if subclass == "sidewalk" or highway in ["footway", "pedestrian"]:
+		if raw_surface.is_empty() or raw_surface == "paved":
+			return "concrete"
+
 	if not raw_surface.is_empty() and SURFACE_TAG_MAP.has(raw_surface):
 		return SURFACE_TAG_MAP[raw_surface]
 
 	# Fallback based on highway tag
-	var highway = str(tags.get("highway", "")).strip_edges().to_lower()
 	if highway in ["path", "track"]:
 		return "dirt"
 	elif highway in ["footway", "pedestrian"]:
@@ -239,7 +247,20 @@ static func parse_bike_lanes(tags: Dictionary) -> Dictionary:
 	var highway = str(tags.get("highway", "")).strip_edges().to_lower()
 	var bicycle = str(tags.get("bicycle", "")).strip_edges().to_lower()
 
-	var is_dedicated = (highway == "cycleway") or (bicycle == "designated")
+	var cycleway = str(tags.get("cycleway", "")).strip_edges().to_lower()
+	var cycleway_both = str(tags.get("cycleway:both", "")).strip_edges().to_lower()
+	var cycleway_right = str(tags.get("cycleway:right", "")).strip_edges().to_lower()
+	var cycleway_left = str(tags.get("cycleway:left", "")).strip_edges().to_lower()
+
+	var is_explicitly_absent = (
+		cycleway in ["no", "none", "absent"]
+		or cycleway_both in ["no", "none", "absent"]
+		or bicycle in ["no", "prohibited", "dismount"]
+	)
+
+	var is_dedicated = (
+		((highway == "cycleway") or (bicycle == "designated")) and not is_explicitly_absent
+	)
 
 	if is_dedicated:
 		var w_info = resolve_road_width(tags)
@@ -254,27 +275,28 @@ static func parse_bike_lanes(tags: Dictionary) -> Dictionary:
 	var left_width: float = 0.0
 	var right_width: float = 0.0
 
-	var cycleway = str(tags.get("cycleway", "")).strip_edges().to_lower()
-	var cycleway_both = str(tags.get("cycleway:both", "")).strip_edges().to_lower()
-	var cycleway_right = str(tags.get("cycleway:right", "")).strip_edges().to_lower()
-	var cycleway_left = str(tags.get("cycleway:left", "")).strip_edges().to_lower()
-
-	if cycleway == "track" or cycleway_both == "track":
-		left_width = 2.0
-		right_width = 2.0
-	elif cycleway == "lane" or cycleway_both == "lane":
-		left_width = 1.5
-		right_width = 1.5
-	else:
-		if cycleway_right == "track":
-			right_width = 2.0
-		elif cycleway_right == "lane":
-			right_width = 1.5
-
-		if cycleway_left == "track":
+	if not is_explicitly_absent:
+		if cycleway == "track" or cycleway_both == "track":
 			left_width = 2.0
-		elif cycleway_left == "lane":
+			right_width = 2.0
+		elif cycleway == "lane" or cycleway_both == "lane":
 			left_width = 1.5
+			right_width = 1.5
+		else:
+			if cycleway_right == "track":
+				right_width = 2.0
+			elif cycleway_right == "lane":
+				right_width = 1.5
+
+			if cycleway_left == "track":
+				left_width = 2.0
+			elif cycleway_left == "lane":
+				left_width = 1.5
+
+	if cycleway_left in ["no", "none", "absent"]:
+		left_width = 0.0
+	if cycleway_right in ["no", "none", "absent"]:
+		right_width = 0.0
 
 	var has_bike_lane = left_width > 0.0 or right_width > 0.0
 	return {
@@ -740,7 +762,11 @@ static func calculate_elevation(tags: Dictionary, section_type: String = "carria
 
 	if section_type == "bike_lane":
 		z_offset = ELEVATION_BIKE_LANES
-	elif section_type == "footway" or highway in ["footway", "pedestrian", "path", "steps"]:
+	elif (
+		section_type == "footway"
+		or highway in ["footway", "pedestrian", "path", "steps"]
+		or str(tags.get("subclass", "")).strip_edges().to_lower() == "sidewalk"
+	):
 		z_offset = ELEVATION_FOOTPATHS
 	else:
 		z_offset = ELEVATION_ROADS
@@ -906,6 +932,215 @@ static func generate_bridge_barriers(
 	return {"vertices": vertices, "normals": normals, "uvs": uvs, "indices": indices}
 
 
+## Build authoritative horizontal road/facility/junction surface
+static func _build_authoritative_surface(
+	road_dict: Dictionary, surface_batches: Dictionary
+) -> void:
+	var outer_rings: Array = road_dict.get("outer_rings", [])
+	var inner_rings: Array = road_dict.get("inner_rings", [])
+	if outer_rings.is_empty():
+		return
+
+	var tags: Dictionary = road_dict.get("tags", {})
+	var role: String = str(road_dict.get("role", tags.get("role", "road"))).to_lower()
+	var kind: String = str(road_dict.get("kind", tags.get("kind", role))).to_lower()
+	var section_type: String = "carriageway"
+	if (
+		role in ["sidewalk", "footway", "pedestrian", "path"]
+		or kind in ["sidewalk", "footway", "pedestrian", "path"]
+	):
+		section_type = "footway"
+	elif (
+		role in ["bike_lane", "cycleway", "bike_facility"]
+		or kind in ["bike_lane", "cycleway", "bike_facility"]
+	):
+		section_type = "bike_lane"
+	elif (
+		role in ["parking", "median", "buffer", "verge"]
+		or kind in ["parking", "median", "buffer", "verge"]
+	):
+		section_type = (
+			"footway"
+			if (role == "median" or role == "buffer" or kind == "median" or kind == "buffer")
+			else "carriageway"
+		)
+
+	var mat_type: String = resolve_surface_type(tags)
+	if mat_type.is_empty() or mat_type == "asphalt":
+		if section_type == "footway":
+			mat_type = "footway"
+		elif section_type == "bike_lane":
+			mat_type = "bike_lane"
+		else:
+			mat_type = "asphalt"
+
+	# 1. Elevation
+	var elev_y: float = calculate_elevation(tags, section_type)
+
+	# 2. Mesh thickness
+	var thickness: float = 0.05
+	if section_type == "footway":
+		thickness = 0.15  # Sidewalk kerb height
+	elif section_type == "bike_lane":
+		thickness = 0.08
+	elif is_bridge(tags):
+		thickness = 0.30
+
+	var base_y: float = elev_y - thickness
+	if base_y < 0.0 and not is_bridge(tags):
+		base_y = 0.0
+
+	var vertices = PackedVector3Array()
+	var normals = PackedVector3Array()
+	var uvs = PackedVector2Array()
+	var indices = PackedInt32Array()
+
+	# 3. Top surface triangulation using Earcut
+	for outer in outer_rings:
+		if outer is PackedVector3Array and outer.size() >= 3:
+			var matched_inners = (
+				_filter_inners_for_outer(outer, inner_rings)
+				if outer_rings.size() > 1
+				else inner_rings
+			)
+			var tri_result = EarcutModule.triangulate_polygon_3d(outer, matched_inners, elev_y)
+			var pts: PackedVector3Array = tri_result.get("points", PackedVector3Array())
+			var idxs: PackedInt32Array = tri_result.get("indices", PackedInt32Array())
+
+			var base_index = vertices.size()
+			for pt in pts:
+				vertices.append(pt)
+				normals.append(Vector3(0.0, 1.0, 0.0))
+				uvs.append(Vector2(pt.x / 4.0, pt.z / 4.0))
+
+			for idx in idxs:
+				indices.append(base_index + idx)
+
+			# 4. Vertical side skirts (perimeter thickness)
+			_extrude_surface_skirt(outer, base_y, elev_y, false, vertices, normals, uvs, indices)
+
+	for inner in inner_rings:
+		if inner is PackedVector3Array and inner.size() >= 3:
+			_extrude_surface_skirt(inner, base_y, elev_y, true, vertices, normals, uvs, indices)
+
+	if vertices.size() >= 3 and indices.size() >= 3:
+		_append_mesh_batch(
+			surface_batches,
+			mat_type,
+			{"vertices": vertices, "normals": normals, "uvs": uvs, "indices": indices}
+		)
+
+	# 5. Bridge pillars if applicable
+	if is_bridge(tags):
+		var centerline: PackedVector3Array = road_dict.get("centerline", PackedVector3Array())
+		if centerline.size() >= 2:
+			var pillars = generate_bridge_pillars(centerline, elev_y)
+			if pillars.vertices.size() > 0:
+				_append_mesh_batch(surface_batches, "concrete", pillars)
+
+
+static func _filter_inners_for_outer(
+	outer: PackedVector3Array, inner_rings: Array
+) -> Array[PackedVector3Array]:
+	var matched: Array[PackedVector3Array] = []
+	if inner_rings.is_empty() or outer.size() < 3:
+		return matched
+
+	var outer_2d = PackedVector2Array()
+	outer_2d.resize(outer.size())
+	for i in range(outer.size()):
+		outer_2d[i] = Vector2(outer[i].x, outer[i].z)
+
+	for hole in inner_rings:
+		if hole is PackedVector3Array and hole.size() >= 3:
+			var test_pt = Vector2(hole[0].x, hole[0].z)
+			if Geometry2D.is_point_in_polygon(test_pt, outer_2d):
+				matched.append(hole)
+
+	return matched
+
+
+## Extrude vertical perimeter skirt (mesh thickness) for an authoritative surface ring
+static func _extrude_surface_skirt(
+	ring: PackedVector3Array,
+	base_y: float,
+	top_y: float,
+	is_hole: bool,
+	out_vertices: PackedVector3Array,
+	out_normals: PackedVector3Array,
+	out_uvs: PackedVector2Array,
+	out_indices: PackedInt32Array
+) -> void:
+	if top_y <= base_y:
+		return
+	var pts = ring
+	if is_hole:
+		pts = ring.duplicate()
+		pts.reverse()
+
+	var n = pts.size()
+	if n < 3:
+		return
+
+	var count = n
+	if pts[0].distance_squared_to(pts[n - 1]) < 0.0001:
+		count = n - 1
+
+	if count < 3:
+		return
+
+	var u_accum = 0.0
+	for i in range(count):
+		var p0 = pts[i]
+		var p1 = pts[(i + 1) % count]
+
+		var dx = p1.x - p0.x
+		var dz = p1.z - p0.z
+		var seg_len = sqrt(dx * dx + dz * dz)
+		if seg_len < 0.0001:
+			continue
+
+		var norm = Vector3(-dz / seg_len, 0.0, dx / seg_len)
+
+		var v0 = Vector3(p0.x, base_y, p0.z)
+		var v1 = Vector3(p1.x, base_y, p1.z)
+		var v2 = Vector3(p1.x, top_y, p1.z)
+		var v3 = Vector3(p0.x, top_y, p0.z)
+
+		var u0 = u_accum
+		var u1 = u_accum + seg_len
+		u_accum = u1
+
+		var uv0 = Vector2(u0, base_y)
+		var uv1 = Vector2(u1, base_y)
+		var uv2 = Vector2(u1, top_y)
+		var uv3 = Vector2(u0, top_y)
+
+		var start_idx = out_vertices.size()
+		out_vertices.append(v0)
+		out_vertices.append(v1)
+		out_vertices.append(v2)
+		out_vertices.append(v3)
+
+		out_normals.append(norm)
+		out_normals.append(norm)
+		out_normals.append(norm)
+		out_normals.append(norm)
+
+		out_uvs.append(uv0)
+		out_uvs.append(uv1)
+		out_uvs.append(uv2)
+		out_uvs.append(uv3)
+
+		out_indices.append(start_idx)
+		out_indices.append(start_idx + 1)
+		out_indices.append(start_idx + 2)
+
+		out_indices.append(start_idx)
+		out_indices.append(start_idx + 2)
+		out_indices.append(start_idx + 3)
+
+
 ## Build complete 3D Node3D for roads array, including compound ribbons, bridge barriers, and pillars
 static func build_roads_node(roads_data: Array, create_colliders: bool = true) -> Node3D:
 	var roads_root = Node3D.new()
@@ -917,6 +1152,10 @@ static func build_roads_node(roads_data: Array, create_colliders: bool = true) -
 	# Pass 1: Build endpoint incidence map to detect cul-de-sacs / dead ends (node degree == 1)
 	var endpoint_counts: Dictionary = {}
 	for road_dict in roads_data:
+		if road_dict.get("is_authoritative_surface", false):
+			continue
+		if road_dict.get("is_semantic_only", false) or road_dict.get("role", "") == "centerline":
+			continue
 		var pts: PackedVector3Array = road_dict.get("points", PackedVector3Array())
 		var is_closed = road_dict.get("is_closed", false)
 		if pts.size() < 2 or is_closed:
@@ -926,6 +1165,23 @@ static func build_roads_node(roads_data: Array, create_colliders: bool = true) -
 		endpoint_counts[k_start] = endpoint_counts.get(k_start, 0) + 1
 		endpoint_counts[k_end] = endpoint_counts.get(k_end, 0) + 1
 	for road_dict in roads_data:
+		if not (road_dict is Dictionary):
+			continue
+		var r_role = (
+			str(road_dict.get("role", road_dict.get("tags", {}).get("role", ""))).to_lower()
+		)
+		var r_kind = (
+			str(road_dict.get("kind", road_dict.get("tags", {}).get("kind", ""))).to_lower()
+		)
+		if r_role == "building" or r_kind == "building":
+			continue
+		if road_dict.get("is_authoritative_surface", false):
+			_build_authoritative_surface(road_dict, surface_batches)
+			continue
+		if road_dict.get("is_semantic_only", false) or road_dict.get("role", "") == "centerline":
+			# Centerlines and profiles are retained as semantic data; do not independently regenerate a conflicting footprint
+			continue
+
 		var tags: Dictionary = road_dict.get("tags", {})
 		var points: PackedVector3Array = road_dict.get("points", PackedVector3Array())
 		if points.size() < 2:

@@ -202,7 +202,7 @@ export async function fetchOsmApiFallback(
   return { elements, source: 'osm_0_6' }
 }
 
-function parseOsmXmlToElements(xmlString: string): OSMElement[] {
+export function parseOsmXmlToElements(xmlString: string): OSMElement[] {
   if (typeof DOMParser !== 'undefined') {
     const parser = new DOMParser()
     const doc = parser.parseFromString(xmlString, 'application/xml')

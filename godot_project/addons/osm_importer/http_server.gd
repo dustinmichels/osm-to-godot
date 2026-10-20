@@ -10,6 +10,8 @@ signal server_stopped
 signal import_received(parsed_data: Dictionary, raw_payload: Dictionary)
 signal import_failed(error_message: String)
 
+const SUPPORTED_EDITOR_PAYLOAD_VERSIONS: Array[String] = ["1.0.0"]
+
 const DEFAULT_PORT: int = 8080
 const MAX_PORT_ATTEMPTS: int = 10
 const CONNECTION_TIMEOUT_MS: int = 20000
@@ -256,7 +258,13 @@ func _handle_get(peer: StreamPeerTCP, raw_path: String) -> void:
 			peer,
 			200,
 			"OK",
-			{"status": "ok", "app": "osm-to-godot", "port": active_port, "version": "1.0.0"}
+			{
+				"status": "ok",
+				"app": "osm-to-godot",
+				"port": active_port,
+				"version": "1.0.0",
+				"supported_editor_payload_versions": SUPPORTED_EDITOR_PAYLOAD_VERSIONS
+			}
 		)
 		return
 
@@ -316,10 +324,75 @@ func _send_fallback_index(peer: StreamPeerTCP) -> void:
 	peer.put_data(out)
 
 
+static func check_editor_payload_version(payload: Dictionary) -> Dictionary:
+	var has_explicit_editor_version = (
+		payload.has("editorPayloadVersion")
+		or payload.has("editor_payload_version")
+		or (
+			payload.has("metadata")
+			and typeof(payload["metadata"]) == TYPE_DICTIONARY
+			and (
+				payload["metadata"].has("editorPayloadVersion")
+				or payload["metadata"].has("editor_payload_version")
+			)
+		)
+	)
+	var is_editor_generator = (
+		str(payload.get("generator", "")).begins_with("osm-to-godot-editor")
+		or (
+			payload.has("metadata")
+			and typeof(payload["metadata"]) == TYPE_DICTIONARY
+			and str(payload["metadata"].get("generator", "")).begins_with("osm-to-godot-editor")
+		)
+	)
+	var is_editor = has_explicit_editor_version or is_editor_generator
+	if not is_editor:
+		return {"is_editor": false, "valid": true}
+
+	var version_val = payload.get(
+		"editorPayloadVersion", payload.get("editor_payload_version", null)
+	)
+	if (
+		version_val == null
+		and payload.has("metadata")
+		and typeof(payload["metadata"]) == TYPE_DICTIONARY
+	):
+		version_val = payload["metadata"].get(
+			"editorPayloadVersion", payload["metadata"].get("editor_payload_version", null)
+		)
+	if (
+		version_val == null
+		and payload.has("metadata")
+		and typeof(payload["metadata"]) == TYPE_DICTIONARY
+	):
+		version_val = payload["metadata"].get("version", null)
+
+	var version_str = "" if version_val == null else str(version_val).strip_edges()
+	if version_str.is_empty():
+		var err_msg = (
+			"Missing editor payload version. Supported versions: "
+			+ ", ".join(SUPPORTED_EDITOR_PAYLOAD_VERSIONS)
+			+ "."
+		)
+		return {"is_editor": true, "valid": false, "error": err_msg}
+	elif not (version_str in SUPPORTED_EDITOR_PAYLOAD_VERSIONS):
+		var err_msg = (
+			'Unsupported editor payload version: "'
+			+ version_str
+			+ '". Supported versions: '
+			+ ", ".join(SUPPORTED_EDITOR_PAYLOAD_VERSIONS)
+			+ "."
+		)
+		return {"is_editor": true, "valid": false, "error": err_msg}
+
+	return {"is_editor": true, "valid": true, "version": version_str}
+
+
 func _handle_post(peer: StreamPeerTCP, path: String, body_bytes: PackedByteArray) -> void:
-	if path != "/api/import":
+	if path != "/api/import" and path != "/api/fetch":
 		_send_error(peer, 404, "Not Found")
 		return
+	var is_fetch_only = path == "/api/fetch"
 
 	var body_str = body_bytes.get_string_from_utf8()
 	var json = JSON.new()
@@ -343,6 +416,7 @@ func _handle_post(peer: StreamPeerTCP, path: String, body_bytes: PackedByteArray
 	var dir = DirAccess.open("res://")
 	if dir and not dir.dir_exists(dir_path.trim_prefix("res://")):
 		dir.make_dir_recursive(dir_path.trim_prefix("res://"))
+	var fetch_output: Array = []
 
 	# Check if payload is a bounding box query requesting Overture fetch
 	if payload.has("bbox") or (payload.has("west") and payload.has("south")):
@@ -411,21 +485,21 @@ func _handle_post(peer: StreamPeerTCP, path: String, body_bytes: PackedByteArray
 					" --bbox=",
 					bbox_str
 				)
-				var output = []
 				var exit_code = OS.execute(
 					"python3",
 					[script_path, "--bbox", bbox_str, "--output", out_geojson],
-					output,
+					fetch_output,
 					true
 				)
-				if exit_code == 0 and FileAccess.file_exists("res://data/overture_export.geojson"):
+				if FileAccess.file_exists("res://data/overture_export.geojson"):
 					var f_geo = FileAccess.open(
 						"res://data/overture_export.geojson", FileAccess.READ
 					)
 					if f_geo:
-						body_str = f_geo.get_as_text()
+						var content = f_geo.get_as_text()
 						f_geo.close()
-						if json.parse(body_str) == OK and typeof(json.data) == TYPE_DICTIONARY:
+						if json.parse(content) == OK and typeof(json.data) == TYPE_DICTIONARY:
+							body_str = content
 							payload = json.data
 				elif is_medford_y:
 					var cached_path = "res://data/medford_y_overture.geojson"
@@ -442,8 +516,45 @@ func _handle_post(peer: StreamPeerTCP, path: String, body_bytes: PackedByteArray
 									"[OSM Importer] Fallback to cached Medford-Y Overture preset."
 								)
 
+	if is_fetch_only and not (payload.get("type") in ["FeatureCollection", "Feature"]):
+		var err_msg = "Failed to acquire Overture GeoJSON for requested bounding box."
+		if fetch_output.size() > 0:
+			err_msg += " Details: " + " ".join(fetch_output)
+		push_error("[OSM Importer] " + err_msg)
+		_send_json_response(
+			peer, 500, "Internal Server Error", {"success": false, "error": err_msg}
+		)
+		return
+
 	var is_geojson = payload.get("type") in ["FeatureCollection", "Feature"]
-	var effective_save_path = "res://data/overture_export.geojson" if is_geojson else save_file_path
+	var editor_check = check_editor_payload_version(payload)
+	if editor_check["is_editor"] and not editor_check["valid"]:
+		var err_msg = str(editor_check["error"])
+		push_error("[OSM Importer] " + err_msg)
+		_send_json_response(peer, 400, "Bad Request", {"success": false, "error": err_msg})
+		import_failed.emit(err_msg)
+		return
+	var is_editor = editor_check["is_editor"]
+	var effective_save_path = save_file_path
+	var detected_format = "osm"
+	if is_editor:
+		effective_save_path = "res://data/editor_export.geojson"
+		detected_format = "editor"
+	elif is_geojson:
+		var meta = payload.get("metadata", {})
+		if (
+			typeof(meta) == TYPE_DICTIONARY
+			and (
+				meta.get("source") == "Overture Maps Foundation"
+				or str(meta.get("source", "")).to_lower().contains("overture")
+				or meta.has("counts")
+			)
+		):
+			effective_save_path = "res://data/overture_export.geojson"
+			detected_format = "overture"
+		else:
+			effective_save_path = "res://data/source_export.geojson"
+			detected_format = "geojson"
 
 	# Save raw file to project
 	var f = FileAccess.open(effective_save_path, FileAccess.WRITE)
@@ -467,20 +578,56 @@ func _handle_post(peer: StreamPeerTCP, path: String, body_bytes: PackedByteArray
 	else:
 		var parser = OSMParserClass.new()
 		parsed = parser.parse_data(payload)
+	if parsed.has("error"):
+		var err_msg = "Parse error: " + str(parsed["error"])
+		push_error("[OSM Importer] " + err_msg)
+		_send_json_response(peer, 400, "Bad Request", {"success": false, "error": err_msg})
+		import_failed.emit(err_msg)
+		return
 
 	var roads_count = parsed.get("roads", []).size()
 	var buildings_count = parsed.get("buildings", []).size()
 	var elements_count = (
 		payload.get("features", []).size() if is_geojson else payload.get("elements", []).size()
 	)
+	var actual_source_type = str(parsed.get("source_type", detected_format))
 
 	print(
 		"[OSM Importer] Direct import successful: ",
 		roads_count,
 		" roads, ",
 		buildings_count,
-		" buildings parsed."
+		" buildings parsed. (Source path: ",
+		actual_source_type,
+		")"
 	)
+	if is_fetch_only:
+		var fetch_warnings: Array = []
+		if payload.has("metadata") and typeof(payload["metadata"]) == TYPE_DICTIONARY:
+			var meta: Dictionary = payload["metadata"]
+			if (
+				meta.has("failed_themes")
+				and typeof(meta["failed_themes"]) == TYPE_ARRAY
+				and meta["failed_themes"].size() > 0
+			):
+				fetch_warnings.append(
+					"Partial download failure for themes: " + ", ".join(meta["failed_themes"])
+				)
+		_send_json_response(
+			peer,
+			200,
+			"OK",
+			{
+				"success": true,
+				"saved_path": effective_save_path,
+				"format": "geojson" if is_geojson else "osm",
+				"geojson": payload if is_geojson else null,
+				"warnings": fetch_warnings,
+				"stats":
+				{"roads": roads_count, "buildings": buildings_count, "elements": elements_count}
+			}
+		)
+		return
 
 	_send_json_response(
 		peer,
@@ -489,7 +636,8 @@ func _handle_post(peer: StreamPeerTCP, path: String, body_bytes: PackedByteArray
 		{
 			"success": true,
 			"saved_path": effective_save_path,
-			"format": "geojson" if is_geojson else "osm",
+			"format": actual_source_type,
+			"source_type": actual_source_type,
 			"stats":
 			{"roads": roads_count, "buildings": buildings_count, "elements": elements_count}
 		}

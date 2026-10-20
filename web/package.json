@@ -5,17 +5,19 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc && vite build",
-    "build:addon": "vue-tsc && vite build && rm -rf ../godot_project/addons/osm_importer/web_dist && mkdir -p ../godot_project/addons/osm_importer/web_dist && cp -r dist/* ../godot_project/addons/osm_importer/web_dist/ && touch ../godot_project/addons/osm_importer/web_dist/.gdignore",
+    "build": "vite build",
+    "build:addon": "vite build && rm -rf ../godot_project/addons/osm_importer/web_dist && mkdir -p ../godot_project/addons/osm_importer/web_dist && cp -r dist/* ../godot_project/addons/osm_importer/web_dist/ && touch ../godot_project/addons/osm_importer/web_dist/.gdignore",
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit",
     "test": "bun test"
   },
   "dependencies": {
+    "clipper-lib": "^6.4.2",
     "maplibre-gl": "^6.15.0",
     "vue": "^3.5.44"
   },
   "devDependencies": {
+    "@types/clipper-lib": "^6.4.0",
     "@types/node": "^22.13.0",
     "@vitejs/plugin-vue": "^6.0.10",
     "typescript": "5.7.3",

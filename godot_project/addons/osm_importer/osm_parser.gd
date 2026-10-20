@@ -189,6 +189,9 @@ func parse_data(data: Dictionary) -> Dictionary:
 					b["pois"].append(poi)
 
 	return {
+		"source_type": "osm",
+		"is_editor_payload": false,
+		"is_raw_source_import": true,
 		"metadata": metadata,
 		"projection_origin": {"lat": projection.origin_lat_deg, "lon": projection.origin_lon_deg},
 		"roads": roads,

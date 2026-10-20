@@ -1,0 +1,584 @@
+{
+  "type": "FeatureCollection",
+  "generator": "osm-to-godot-editor",
+  "editorPayloadVersion": "1.0.0",
+  "metadata": {
+    "generator": "osm-to-godot-editor",
+    "version": "1.0.0",
+    "exportedAt": "2026-10-20T12:31:12.217Z",
+    "sourceMetadata": {
+      "source": "osm",
+      "originalFeatureCount": 3
+    },
+    "projectionOrigin": {
+      "lon": -71.11,
+      "lat": 42.415
+    },
+    "projection": {
+      "type": "equirectangular_local_tangent",
+      "earthRadius": 6378137,
+      "origin": {
+        "lon": -71.11,
+        "lat": 42.415
+      },
+      "axes": {
+        "x": "+East (meters)",
+        "y": "+North (meters 2D tangent plane, +Up in Godot 3D)",
+        "z": "-North (meters in Godot 3D)"
+      },
+      "unit": "meter"
+    },
+    "exportInclusions": {
+      "road": true,
+      "carriageway": true,
+      "building": true,
+      "sidewalk": true,
+      "footway": true,
+      "cycling": true,
+      "bike_lane": true,
+      "bike_facility": true,
+      "cycleway": true,
+      "junction": true,
+      "unsupported": true
+    },
+    "featureCounts": {
+      "total": 5,
+      "roads": 2,
+      "buildings": 1,
+      "sidewalks": 1,
+      "bikeLanes": 1,
+      "junctions": 0,
+      "unsupported": 0
+    },
+    "exclusions": [],
+    "assumptions": [
+      "Road, facility, and junction polygons serve as authoritative horizontal footprints."
+    ],
+    "warnings": [],
+    "clippingPolicy": {
+      "mode": "clip_to_bounds",
+      "bufferMarginMeters": 25,
+      "buildingMode": "keep_intersecting",
+      "filterOutsideFeatures": true
+    }
+  },
+  "projectionOrigin": {
+    "lon": -71.11,
+    "lat": 42.415
+  },
+  "projection": {
+    "type": "equirectangular_local_tangent",
+    "earthRadius": 6378137,
+    "origin": {
+      "lon": -71.11,
+      "lat": 42.415
+    },
+    "axes": {
+      "x": "+East (meters)",
+      "y": "+North (meters 2D tangent plane, +Up in Godot 3D)",
+      "z": "-North (meters in Godot 3D)"
+    },
+    "unit": "meter"
+  },
+  "clippingPolicy": {
+    "mode": "clip_to_bounds",
+    "bufferMarginMeters": 25,
+    "buildingMode": "keep_intersecting",
+    "filterOutsideFeatures": true
+  },
+  "clippingStats": {
+    "totalSurfaces": 5,
+    "retainedSurfaces": 5,
+    "clippedSurfaces": 0,
+    "omittedSurfaces": 0,
+    "totalFeatures": 0,
+    "retainedFeatures": 0,
+    "crossBoundaryFeatures": 0,
+    "outsideFeaturesOmitted": 0,
+    "policyApplied": {
+      "mode": "clip_to_bounds",
+      "bufferMarginMeters": 25,
+      "buildingMode": "keep_intersecting",
+      "filterOutsideFeatures": true
+    }
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "id": "road_main_st_strip_strip_carriageway",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -71.1079999955765,
+              42.41503593261137
+            ],
+            [
+              -71.11200000442349,
+              42.41503593261137
+            ],
+            [
+              -71.11200000442349,
+              42.41496406738863
+            ],
+            [
+              -71.1079999955765,
+              42.41496406738863
+            ],
+            [
+              -71.1079999955765,
+              42.41503593261137
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "id": "road_main_st_strip_strip_carriageway",
+        "parentFeatureId": "road_main_st",
+        "stripId": "strip_carriageway",
+        "role": "road",
+        "kind": "carriageway",
+        "isPolygon": true,
+        "isFootprintAuthority": true,
+        "coordinateOrderConvention": "left_right_relative_to_source_coordinates",
+        "widthMeters": 8,
+        "surface": "asphalt",
+        "layer": 0,
+        "bridge": false,
+        "tunnel": false,
+        "roadProfile": {
+          "carriagewayWidthMeters": {
+            "value": 8,
+            "unit": "m",
+            "provenance": "user_edited"
+          },
+          "strips": [
+            {
+              "id": "strip_carriageway",
+              "kind": "carriageway",
+              "widthMeters": 8,
+              "offsetMeters": 0
+            },
+            {
+              "id": "strip_sidewalk_left",
+              "kind": "sidewalk",
+              "side": "left",
+              "widthMeters": 2.5,
+              "offsetMeters": 5.25
+            },
+            {
+              "id": "strip_bike_right",
+              "kind": "bike_lane",
+              "side": "right",
+              "widthMeters": 1.5,
+              "offsetMeters": 4.75
+            }
+          ]
+        },
+        "centerline": {
+          "type": "LineString",
+          "coordinates": [
+            [
+              -71.112,
+              42.415
+            ],
+            [
+              -71.108,
+              42.415
+            ]
+          ]
+        },
+        "isInferredWidth": false,
+        "isInferredFacility": false,
+        "isClipped": false,
+        "boundaryRelation": "inside",
+        "drawOrder": 20,
+        "isStandaloneCycleway": false,
+        "isOnRoadBikeLane": false,
+        "joinType": "miter",
+        "miterLimit": 2.5,
+        "capStart": "butt",
+        "capEnd": "butt",
+        "isClosedLoop": false
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "road_main_st_strip_strip_sidewalk_left",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -71.1079999955765,
+              42.41496406738863
+            ],
+            [
+              -71.11200000442349,
+              42.41496406738863
+            ],
+            [
+              -71.11200000442349,
+              42.414941609506535
+            ],
+            [
+              -71.1079999955765,
+              42.414941609506535
+            ],
+            [
+              -71.1079999955765,
+              42.41496406738863
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "id": "road_main_st_strip_strip_sidewalk_left",
+        "parentFeatureId": "road_main_st",
+        "stripId": "strip_sidewalk_left",
+        "role": "sidewalk",
+        "kind": "sidewalk",
+        "isPolygon": true,
+        "isFootprintAuthority": true,
+        "side": "left",
+        "coordinateOrderConvention": "left_right_relative_to_source_coordinates",
+        "widthMeters": 2.5,
+        "surface": "asphalt",
+        "layer": 0,
+        "bridge": false,
+        "tunnel": false,
+        "roadProfile": {
+          "carriagewayWidthMeters": {
+            "value": 8,
+            "unit": "m",
+            "provenance": "user_edited"
+          },
+          "strips": [
+            {
+              "id": "strip_carriageway",
+              "kind": "carriageway",
+              "widthMeters": 8,
+              "offsetMeters": 0
+            },
+            {
+              "id": "strip_sidewalk_left",
+              "kind": "sidewalk",
+              "side": "left",
+              "widthMeters": 2.5,
+              "offsetMeters": 5.25
+            },
+            {
+              "id": "strip_bike_right",
+              "kind": "bike_lane",
+              "side": "right",
+              "widthMeters": 1.5,
+              "offsetMeters": 4.75
+            }
+          ]
+        },
+        "centerline": {
+          "type": "LineString",
+          "coordinates": [
+            [
+              -71.112,
+              42.415
+            ],
+            [
+              -71.108,
+              42.415
+            ]
+          ]
+        },
+        "isInferredWidth": false,
+        "isInferredFacility": false,
+        "isClipped": false,
+        "boundaryRelation": "inside",
+        "drawOrder": 30,
+        "isStandaloneCycleway": false,
+        "isOnRoadBikeLane": false,
+        "joinType": "miter",
+        "miterLimit": 2.5,
+        "capStart": "butt",
+        "capEnd": "butt",
+        "isClosedLoop": false
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "road_main_st_strip_strip_bike_right",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -71.1079999955765,
+              42.41496406738863
+            ],
+            [
+              -71.11200000442349,
+              42.41496406738863
+            ],
+            [
+              -71.11200000442349,
+              42.41495059265937
+            ],
+            [
+              -71.1079999955765,
+              42.41495059265937
+            ],
+            [
+              -71.1079999955765,
+              42.41496406738863
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "id": "road_main_st_strip_strip_bike_right",
+        "parentFeatureId": "road_main_st",
+        "stripId": "strip_bike_right",
+        "role": "bike_lane",
+        "kind": "bike_lane",
+        "isPolygon": true,
+        "isFootprintAuthority": true,
+        "side": "right",
+        "coordinateOrderConvention": "left_right_relative_to_source_coordinates",
+        "widthMeters": 1.5,
+        "surface": "asphalt",
+        "layer": 0,
+        "bridge": false,
+        "tunnel": false,
+        "roadProfile": {
+          "carriagewayWidthMeters": {
+            "value": 8,
+            "unit": "m",
+            "provenance": "user_edited"
+          },
+          "strips": [
+            {
+              "id": "strip_carriageway",
+              "kind": "carriageway",
+              "widthMeters": 8,
+              "offsetMeters": 0
+            },
+            {
+              "id": "strip_sidewalk_left",
+              "kind": "sidewalk",
+              "side": "left",
+              "widthMeters": 2.5,
+              "offsetMeters": 5.25
+            },
+            {
+              "id": "strip_bike_right",
+              "kind": "bike_lane",
+              "side": "right",
+              "widthMeters": 1.5,
+              "offsetMeters": 4.75
+            }
+          ]
+        },
+        "centerline": {
+          "type": "LineString",
+          "coordinates": [
+            [
+              -71.112,
+              42.415
+            ],
+            [
+              -71.108,
+              42.415
+            ]
+          ]
+        },
+        "isInferredWidth": false,
+        "isInferredFacility": false,
+        "isClipped": false,
+        "boundaryRelation": "inside",
+        "drawOrder": 30,
+        "isStandaloneCycleway": false,
+        "isOnRoadBikeLane": true,
+        "joinType": "miter",
+        "miterLimit": 2.5,
+        "capStart": "butt",
+        "capEnd": "butt",
+        "isClosedLoop": false
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "road_cross_st_strip_strip_cross_carriageway",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -71.10995741305906,
+              42.41700000016541
+            ],
+            [
+              -71.11004258694093,
+              42.41700000016541
+            ],
+            [
+              -71.11004258694093,
+              42.41299999983459
+            ],
+            [
+              -71.10995741305906,
+              42.41299999983459
+            ],
+            [
+              -71.10995741305906,
+              42.41700000016541
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "id": "road_cross_st_strip_strip_cross_carriageway",
+        "parentFeatureId": "road_cross_st",
+        "stripId": "strip_cross_carriageway",
+        "role": "road",
+        "kind": "carriageway",
+        "isPolygon": true,
+        "isFootprintAuthority": true,
+        "coordinateOrderConvention": "left_right_relative_to_source_coordinates",
+        "widthMeters": 7,
+        "surface": "asphalt",
+        "layer": 0,
+        "bridge": false,
+        "tunnel": false,
+        "roadProfile": {
+          "carriagewayWidthMeters": {
+            "value": 7,
+            "unit": "m",
+            "provenance": "user_edited"
+          },
+          "strips": [
+            {
+              "id": "strip_cross_carriageway",
+              "kind": "carriageway",
+              "widthMeters": 7,
+              "offsetMeters": 0
+            }
+          ]
+        },
+        "centerline": {
+          "type": "LineString",
+          "coordinates": [
+            [
+              -71.11,
+              42.413
+            ],
+            [
+              -71.11,
+              42.417
+            ]
+          ]
+        },
+        "isInferredWidth": false,
+        "isInferredFacility": false,
+        "isClipped": false,
+        "boundaryRelation": "inside",
+        "drawOrder": 20,
+        "isStandaloneCycleway": false,
+        "isOnRoadBikeLane": false,
+        "joinType": "miter",
+        "miterLimit": 2.5,
+        "capStart": "butt",
+        "capEnd": "butt",
+        "isClosedLoop": false
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "building_plaza_surface",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -71.1115,
+              42.4155
+            ],
+            [
+              -71.1105,
+              42.4155
+            ],
+            [
+              -71.1105,
+              42.4165
+            ],
+            [
+              -71.1115,
+              42.4165
+            ],
+            [
+              -71.1115,
+              42.4155
+            ]
+          ],
+          [
+            [
+              -71.1112,
+              42.4158
+            ],
+            [
+              -71.1108,
+              42.4158
+            ],
+            [
+              -71.1108,
+              42.4162
+            ],
+            [
+              -71.1112,
+              42.4162
+            ],
+            [
+              -71.1112,
+              42.4158
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "id": "building_plaza_surface",
+        "parentFeatureId": "building_plaza",
+        "role": "building",
+        "kind": "building",
+        "isPolygon": true,
+        "isFootprintAuthority": true,
+        "coordinateOrderConvention": "left_right_relative_to_source_coordinates",
+        "heightMeters": 15,
+        "levels": 5,
+        "surface": "building",
+        "layer": 0,
+        "bridge": false,
+        "tunnel": false,
+        "buildingProfile": {
+          "heightMeters": {
+            "value": 15,
+            "unit": "m",
+            "provenance": "user_edited"
+          },
+          "levels": {
+            "value": 5,
+            "unit": "count",
+            "provenance": "user_edited"
+          }
+        },
+        "isInferredWidth": false,
+        "isInferredFacility": false,
+        "isClipped": false,
+        "boundaryRelation": "inside",
+        "drawOrder": 40,
+        "isInferredLevels": false,
+        "isGeometryFallback": false,
+        "isGeometryInvalid": false,
+        "geometryDerivationStatus": "valid"
+      }
+    }
+  ]
+}
