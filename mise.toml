@@ -1,0 +1,4 @@
+[tasks.test]
+description = "Test task"
+raw = true
+run = "echo hello"

@@ -1,0 +1,23 @@
+{
+  "name": "osm-to-godot-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc && vite build",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "maplibre-gl": "^6.15.0",
+    "vue": "^3.5.44"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "@vitejs/plugin-vue": "^6.0.10",
+    "typescript": "5.7.3",
+    "vite": "^8.3.4",
+    "vue-tsc": "^3.3.13"
+  }
+}
