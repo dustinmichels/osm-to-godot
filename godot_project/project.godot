@@ -15,7 +15,7 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 [application]
 
 config/name="OSM to Godot"
-run/main_scene="res://city_viewer.tscn"
+run/main_scene="uid://mblxw1xbrqdx"
 config/features=PackedStringArray("4.7", "Forward Plus")
 
 [editor_plugins]

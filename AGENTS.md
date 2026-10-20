@@ -1,4 +1,4 @@
-# Testing Rules
+## Testing Rules
 
 Do not write milestone, synthetic, or trivial tests.
 
@@ -9,5 +9,10 @@ Do not write milestone, synthetic, or trivial tests.
 - **Web tests**: Pure-logic unit tests only (`web/src/composables/*.test.ts`).
 
 ## Commands
+
 - **Godot**: `mise run test` (`godot --headless --path godot_project -s res://test_importer_headless.gd`)
 - **Web**: `mise run test-web` (`cd web && bun test`)
+
+## Conventions
+
+- Run `mise run fmt` periodically

@@ -1,5 +1,11 @@
 [tools]
 bun = "latest"
+uv = "latest"
+oxfmt = "latest"
+
+[tasks.fmt]
+description = "Format GDScript (gdformat) and Markdown (oxfmt) files"
+run = ['uvx --from "gdtoolkit==4.*" gdformat .', 'oxfmt "**/*.md"']
 
 [tasks.build-web]
 description = "Build web app and bundle assets into Godot addon"
@@ -16,7 +22,18 @@ run = "godot --headless --path godot_project -s res://test_player_character.gd"
 description = "Run web unit tests"
 run = "cd web && bun test"
 
+# Helper function
 [tasks.geojson]
 description = "Convert OSM export JSON to GeoJSON in data/ directory"
 raw = true
 run = "./scripts/convert-geojson.sh"
+
+[tasks.clear-scene]
+alias = ["clear-city-viewer"]
+description = "Clear existing city_viewer scene to an empty base scene"
+run = "godot --headless --path godot_project -s res://addons/osm_importer/clear_scene.gd"
+
+[tasks.dev]
+description = "Clear existing city_viewer scene and open Godot editor"
+depends = ["clear-scene"]
+run = "godot --editor --path godot_project"

@@ -255,7 +255,8 @@ static func _accumulate_bounds_recursive(node: Node, parent_xform: Transform3D, 
 static func set_owner_recursive(node: Node, scene_root: Node) -> void:
 	for child in node.get_children():
 		child.owner = scene_root
-		set_owner_recursive(child, scene_root)
+		if child.scene_file_path.is_empty():
+			set_owner_recursive(child, scene_root)
 
 ## Save the city scene to a .tscn file on disk
 static func save_city_scene(city_root: Node3D, save_path: String = "res://city_viewer.tscn") -> Error:
@@ -263,6 +264,21 @@ static func save_city_scene(city_root: Node3D, save_path: String = "res://city_v
 	var dir = DirAccess.open("res://")
 	if dir and not dir.dir_exists(dir_path.trim_prefix("res://")):
 		dir.make_dir_recursive(dir_path.trim_prefix("res://"))
+
+	# Preserve existing UID if the file already exists (or use default UID for city_viewer.tscn)
+	var existing_uid = ""
+	if FileAccess.file_exists(save_path):
+		var f_read = FileAccess.open(save_path, FileAccess.READ)
+		if f_read:
+			var first_line = f_read.get_line()
+			f_read.close()
+			var uid_regex = RegEx.new()
+			uid_regex.compile('uid="([^"]+)"')
+			var m = uid_regex.search(first_line)
+			if m:
+				existing_uid = m.get_string(1)
+	if existing_uid.is_empty() and save_path == "res://city_viewer.tscn":
+		existing_uid = "uid://mblxw1xbrqdx"
 
 	set_owner_recursive(city_root, city_root)
 
@@ -277,5 +293,28 @@ static func save_city_scene(city_root: Node3D, save_path: String = "res://city_v
 		push_error("[OSM Importer] Failed to save city scene to " + save_path + ": " + str(save_err))
 		return save_err
 
+	# Re-inject UID in scene header if stripped by headless ResourceSaver
+	if not existing_uid.is_empty():
+		var f_check = FileAccess.open(save_path, FileAccess.READ)
+		if f_check:
+			var content = f_check.get_as_text()
+			f_check.close()
+			var newline_pos = content.find("\n")
+			var first_line = content.substr(0, newline_pos) if newline_pos != -1 else content
+			if not 'uid="' in first_line and first_line.begins_with("[gd_scene") and first_line.ends_with("]"):
+				var new_header = first_line.left(first_line.length() - 1) + ' uid="' + existing_uid + '"]'
+				var rest = content.substr(newline_pos) if newline_pos != -1 else ""
+				var f_write = FileAccess.open(save_path, FileAccess.WRITE)
+				if f_write:
+					f_write.store_string(new_header + rest)
+					f_write.close()
+
 	print("[OSM Importer] Successfully saved city scene to: ", save_path)
 	return OK
+
+## Clear the city scene and save an empty base scene to disk
+static func clear_city_scene(save_path: String = "res://city_viewer.tscn") -> Error:
+	var city_root = build_city_scene([], [])
+	var err = save_city_scene(city_root, save_path)
+	city_root.free()
+	return err

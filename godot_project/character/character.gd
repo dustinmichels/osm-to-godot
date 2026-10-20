@@ -12,8 +12,11 @@ extends CharacterBody3D
 ## - H: Toggle controls guide HUD
 ## - Esc: Release mouse capture
 
-@export var walk_speed: float = 5.0
-@export var sprint_speed: float = 11.0
+@export var walk_speed: float = 2.2
+@export var run_speed: float = 5.2
+@export var sprint_speed: float = 9.0
+@export var acceleration: float = 20.0
+@export var deceleration: float = 24.0
 @export var jump_velocity: float = 5.5
 @export var mouse_sensitivity: float = 0.003
 @export var zoom_speed: float = 0.6
@@ -138,7 +141,8 @@ func _physics_process(delta: float) -> void:
 		input_vec = Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
 
 	var is_sprinting = Input.is_key_pressed(KEY_SHIFT)
-	var speed = sprint_speed if is_sprinting else walk_speed
+	var is_walking = Input.is_key_pressed(KEY_ALT) or Input.is_key_pressed(KEY_CTRL)
+	var target_speed = walk_speed if is_walking else (sprint_speed if is_sprinting else run_speed)
 
 	var move_dir = Vector3.ZERO
 	if input_vec.length_squared() > 0.001:
@@ -151,12 +155,16 @@ func _physics_process(delta: float) -> void:
 		var right = Vector3(cos(cam_rot_y), 0.0, -sin(cam_rot_y))
 		move_dir = (forward * (-input_vec.y) + right * input_vec.x).normalized()
 
-	velocity.x = move_dir.x * speed
-	velocity.z = move_dir.z * speed
+	# Smooth acceleration and deceleration to eliminate abrupt twitching
+	var target_velocity_x = move_dir.x * target_speed
+	var target_velocity_z = move_dir.z * target_speed
+	var accel = acceleration if move_dir.length_squared() > 0.001 else deceleration
+	velocity.x = move_toward(velocity.x, target_velocity_x, accel * delta)
+	velocity.z = move_toward(velocity.z, target_velocity_z, accel * delta)
 
 	# 5. Turn model smoothly to face move direction
 	if model and move_dir.length_squared() > 0.001:
-		var target_angle = atan2(-move_dir.x, -move_dir.z)
+		var target_angle = atan2(move_dir.x, move_dir.z)
 		model.rotation.y = lerp_angle(model.rotation.y, target_angle, rotation_speed * delta)
 
 	if is_inside_tree():
@@ -164,27 +172,37 @@ func _physics_process(delta: float) -> void:
 	else:
 		position += velocity * delta
 
-	# 6. Update Animations
-	_update_animation(move_dir, is_sprinting)
+	# 6. Update Animations with velocity-matched playback speed
+	_update_animation(move_dir, is_sprinting, is_walking)
 
-func _update_animation(move_dir: Vector3, is_sprinting: bool) -> void:
+func _update_animation(move_dir: Vector3, is_sprinting: bool, is_walking: bool) -> void:
 	if not anim_player:
 		return
 
+	var h_velocity = Vector2(velocity.x, velocity.z).length()
 	var target_anim = "Idle_A"
+	var target_speed_scale = 1.0
+
 	if not is_on_floor():
 		target_anim = "Jump_air"
-	elif move_dir.length_squared() > 0.001:
-		if is_sprinting:
-			target_anim = "Sprint" if anim_player.has_animation("Sprint") else "Walk"
+		target_speed_scale = 1.0
+	elif h_velocity > 0.1:
+		if is_sprinting and anim_player.has_animation("Sprint"):
+			target_anim = "Sprint"
+			target_speed_scale = clampf(h_velocity / 6.5, 0.7, 1.8)
+		elif not is_walking and anim_player.has_animation("Jog"):
+			target_anim = "Jog"
+			target_speed_scale = clampf(h_velocity / 3.8, 0.7, 1.6)
 		else:
 			target_anim = "Walk"
+			target_speed_scale = clampf(h_velocity / 1.8, 0.6, 1.6)
 	else:
 		target_anim = "Idle_A"
+		target_speed_scale = 1.0
 
 	if anim_player.current_animation != target_anim:
 		anim_player.play(target_anim, 0.2)
-
+	anim_player.speed_scale = target_speed_scale
 func _toggle_camera_mode() -> void:
 	if not _fly_camera:
 		_find_fly_camera()
@@ -249,9 +267,9 @@ func _setup_hud() -> void:
 	vbox.add_child(sep)
 
 	var instructions = [
-		"⌨️ ⬆️ ⬇️ ⬅️ ➡️ / W A S D : Move",
+		"⌨️ ⬆️ ⬇️ ⬅️ ➡️ / W A S D : Move / Jog",
 		"🚀 Shift : Sprint",
-		"⬆️ Space : Jump",
+		"🚶 Alt / Ctrl : Walk",
 		"🖱️ Left / Right Drag : Orbit camera",
 		"🔄 Scroll Wheel : Zoom in / out",
 		"📷 [V] / [Tab] : Toggle Fly / Player camera",
