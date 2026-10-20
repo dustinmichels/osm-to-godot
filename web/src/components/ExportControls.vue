@@ -89,8 +89,8 @@ const isDraggingFile = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
 const acquireButtonLabel = computed(() => {
-  if (isLoading.value) return 'Acquiring Data...'
-  return dataSource.value === 'overture' ? 'Acquire Overture (DuckDB)' : 'Acquire OSM (Overpass)'
+  if (isLoading.value) return 'Acquiring Data & Opening...'
+  return dataSource.value === 'overture' ? 'Acquire & Open 2D Editor →' : 'Acquire OSM & Open 2D Editor →'
 })
 
 const downloadButtonLabel = computed(() => {
@@ -554,62 +554,73 @@ async function processUploadedFile(file: File) {
     </div>
 
     <!-- Export Inclusions (Independent of Display Visibility & Physical Model) -->
-    <div class="export-inclusions-card" data-testid="export-inclusions-card">
-      <div class="inclusions-header">
-        <span class="inclusions-title">Export Inclusions</span>
-        <span class="inclusions-badge">Non-destructive</span>
+    <details class="export-inclusions-accordion">
+      <summary class="inclusions-summary">
+        <div class="inclusions-summary-left">
+          <span class="inclusions-summary-title">Export Inclusions</span>
+          <span class="inclusions-summary-badge">Optional</span>
+        </div>
+        <svg viewBox="0 0 20 20" fill="currentColor" class="inclusions-chevron">
+          <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+        </svg>
+      </summary>
+      <div class="export-inclusions-card" data-testid="export-inclusions-card">
+        <div class="inclusions-header">
+          <span class="inclusions-title">Export Inclusions</span>
+          <span class="inclusions-badge">Non-destructive</span>
+        </div>
+        <p class="inclusions-sub">
+          Select layers to include in exports. Excluding a layer omits it from exported files without deleting physical facilities or altering road widths.
+        </p>
+        <div class="inclusions-grid">
+          <label class="inclusion-pill-item">
+            <input
+              type="checkbox"
+              :checked="isExportIncluded('road')"
+              data-testid="export-inc-road"
+              @change="toggleExportInclusion('road')"
+            />
+            <span>Roads</span>
+          </label>
+          <label class="inclusion-pill-item">
+            <input
+              type="checkbox"
+              :checked="isExportIncluded('building')"
+              data-testid="export-inc-building"
+              @change="toggleExportInclusion('building')"
+            />
+            <span>Buildings</span>
+          </label>
+          <label class="inclusion-pill-item">
+            <input
+              type="checkbox"
+              :checked="isExportIncluded('sidewalk')"
+              data-testid="export-inc-sidewalk"
+              @change="toggleExportInclusion('sidewalk')"
+            />
+            <span>Sidewalks</span>
+          </label>
+          <label class="inclusion-pill-item">
+            <input
+              type="checkbox"
+              :checked="isExportIncluded('bike_lane')"
+              data-testid="export-inc-bike_lane"
+              @change="toggleExportInclusion('bike_lane')"
+            />
+            <span>Bike Lanes</span>
+          </label>
+          <label class="inclusion-pill-item">
+            <input
+              type="checkbox"
+              :checked="isExportIncluded('junction')"
+              data-testid="export-inc-junction"
+              @change="toggleExportInclusion('junction')"
+            />
+            <span>Junctions</span>
+          </label>
+        </div>
       </div>
-      <p class="inclusions-sub">
-        Select layers to include in exports. Excluding a layer omits it from exported files without deleting physical facilities or altering road widths.
-      </p>
-      <div class="inclusions-grid">
-        <label class="inclusion-pill-item">
-          <input
-            type="checkbox"
-            :checked="isExportIncluded('road')"
-            data-testid="export-inc-road"
-            @change="toggleExportInclusion('road')"
-          />
-          <span>Roads</span>
-        </label>
-        <label class="inclusion-pill-item">
-          <input
-            type="checkbox"
-            :checked="isExportIncluded('building')"
-            data-testid="export-inc-building"
-            @change="toggleExportInclusion('building')"
-          />
-          <span>Buildings</span>
-        </label>
-        <label class="inclusion-pill-item">
-          <input
-            type="checkbox"
-            :checked="isExportIncluded('sidewalk')"
-            data-testid="export-inc-sidewalk"
-            @change="toggleExportInclusion('sidewalk')"
-          />
-          <span>Sidewalks</span>
-        </label>
-        <label class="inclusion-pill-item">
-          <input
-            type="checkbox"
-            :checked="isExportIncluded('bike_lane')"
-            data-testid="export-inc-bike_lane"
-            @change="toggleExportInclusion('bike_lane')"
-          />
-          <span>Bike Lanes</span>
-        </label>
-        <label class="inclusion-pill-item">
-          <input
-            type="checkbox"
-            :checked="isExportIncluded('junction')"
-            data-testid="export-inc-junction"
-            @change="toggleExportInclusion('junction')"
-          />
-          <span>Junctions</span>
-        </label>
-      </div>
-    </div>
+    </details>
 
     <!-- Direct Godot Transfer Success Notice -->
     <div v-if="lastTransferStats" class="transfer-success-box">
@@ -982,12 +993,71 @@ async function processUploadedFile(file: File) {
   gap: 8px;
   margin-bottom: 10px;
 }
-.export-inclusions-card {
-  background: rgba(15, 23, 42, 0.6);
+.export-inclusions-accordion {
+  margin-top: 10px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
+  background: rgba(15, 23, 42, 0.4);
+  overflow: hidden;
+}
+
+.inclusions-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 11.5px;
+  color: #94a3b8;
+  font-weight: 600;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.inclusions-summary:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: #f1f5f9;
+}
+
+.inclusions-summary-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.inclusions-summary-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #cbd5e1;
+}
+
+.inclusions-summary-badge {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: #94a3b8;
+  background: rgba(100, 116, 139, 0.2);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.inclusions-chevron {
+  width: 13px;
+  height: 13px;
+  color: #94a3b8;
+  transition: transform 0.2s ease;
+}
+
+details[open] .inclusions-chevron {
+  transform: rotate(180deg);
+}
+
+.export-inclusions-card {
+  background: transparent;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 0;
   padding: 10px 12px;
-  margin-top: 10px;
   display: flex;
   flex-direction: column;
   gap: 6px;

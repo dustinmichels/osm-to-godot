@@ -303,102 +303,27 @@ async function handleOpenFileSelected(e: Event) {
 
 <template>
   <div class="editor-toolbar" data-testid="editor-toolbar">
-    <!-- View Mode Switcher -->
-    <div class="toolbar-group view-mode-group">
+    <!-- Left Section: Navigation & Project Info -->
+    <div class="toolbar-section toolbar-section-left">
+      <!-- Return to Selector -->
       <button
         type="button"
-        class="toolbar-btn"
-        :class="{ active: viewMode === 'data' }"
-        data-testid="view-data-btn"
-        title="View centerlines, footprints and source lines"
-        @click="setViewMode('data')"
+        class="toolbar-btn back-btn"
+        data-testid="back-to-selector-btn"
+        title="Return to Area Selector"
+        @click="setWorkspace('selector')"
       >
         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" class="toolbar-icon">
-          <path d="M4 6h12M4 10h12M4 14h12" stroke-width="1.8" stroke-linecap="round" />
+          <path d="M12 4l-6 6 6 6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
-        <span>Data View</span>
+        <span>Select Area</span>
       </button>
 
-      <button
-        type="button"
-        class="toolbar-btn"
-        :class="{ active: viewMode === 'realistic' }"
-        data-testid="view-realistic-btn"
-        title="View metric surface footprints and carriageway polygons"
-        @click="setViewMode('realistic')"
-      >
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" class="toolbar-icon">
-          <rect x="3" y="4" width="14" height="12" rx="2" stroke-width="1.8" />
-          <path d="M7 4v12M13 4v12" stroke-width="1.8" stroke-dasharray="2 2" />
-        </svg>
-        <span>Realistic View</span>
-      </button>
-    </div>
+      <div class="brand-chip">
+        <span class="brand-badge-mini">2D</span>
+        <span class="brand-name-mini">Studio</span>
+      </div>
 
-    <!-- History Actions (Undo / Redo) -->
-    <div class="toolbar-group history-group">
-      <button
-        type="button"
-        class="toolbar-btn undo-btn"
-        data-testid="undo-btn"
-        :disabled="!canUndo"
-        title="Undo edit (Ctrl+Z / Cmd+Z)"
-        @click="undo"
-      >
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" class="toolbar-icon">
-          <path d="M7 8L3 12m0 0l4 4m-4-4h9a5 5 0 005-5v-1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-        <span>Undo</span>
-      </button>
-
-      <button
-        type="button"
-        class="toolbar-btn redo-btn"
-        data-testid="redo-btn"
-        :disabled="!canRedo"
-        title="Redo edit (Ctrl+Y / Cmd+Shift+Z)"
-        @click="redo"
-      >
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" class="toolbar-icon">
-          <path d="M13 8l4 4m0 0l-4 4m4-4H8a5 5 0 01-5-5v-1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-        <span>Redo</span>
-      </button>
-    </div>
-
-    <!-- View Bounds Actions -->
-    <div class="toolbar-group nav-bounds-group">
-      <button
-        type="button"
-        class="toolbar-btn fit-data-btn"
-        data-testid="fit-data-btn"
-        :disabled="featureCount === 0"
-        title="Fit map camera to imported data"
-        @click="emit('fitData')"
-      >
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" class="toolbar-icon">
-          <path d="M3 7V3h4M17 7V3h-4M3 13v4h4M17 13v4h-4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-        <span>Fit Data</span>
-      </button>
-
-      <button
-        type="button"
-        class="toolbar-btn return-area-btn"
-        data-testid="return-area-btn"
-        title="Return camera to selected area"
-        @click="emit('returnArea')"
-      >
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" class="toolbar-icon">
-          <rect x="3" y="3" width="14" height="14" rx="2" stroke-width="1.8" stroke-dasharray="2 2" />
-          <circle cx="10" cy="10" r="3" stroke-width="1.8" />
-        </svg>
-        <span>Selected Area</span>
-      </button>
-    </div>
-
-    <!-- Quick Stats & Actions -->
-    <div class="toolbar-group">
       <span
         class="source-badge"
         :data-source="activeSource"
@@ -407,6 +332,20 @@ async function handleOpenFileSelected(e: Event) {
       >
         <span class="source-icon">{{ activeSource === 'osm' ? '🌐' : activeSource === 'overture' ? '🦆' : '📁' }}</span>
         <span>{{ sourceDisplayName }}</span>
+      </span>
+
+      <span class="toolbar-info">
+        <strong>{{ featureCount }}</strong> features
+      </span>
+
+      <span
+        v-if="isDirty"
+        class="unsaved-badge"
+        data-testid="unsaved-edits-badge"
+        title="Unsaved project edits. Save or export to preserve changes."
+      >
+        <span class="unsaved-dot" />
+        <span>Unsaved edits</span>
       </span>
 
       <button
@@ -419,19 +358,121 @@ async function handleOpenFileSelected(e: Event) {
         <span class="attribution-chip-icon">⚖️</span>
         <span class="attribution-chip-label">{{ licenseText }}</span>
       </button>
+    </div>
 
-      <span class="toolbar-info">
-        <strong>{{ featureCount }}</strong> features
-      </span>
-      <span
-        v-if="isDirty"
-        class="unsaved-badge"
-        data-testid="unsaved-edits-badge"
-        title="Unsaved project edits. Save or export to preserve changes."
+    <!-- Center Section: View Mode, History, Navigation -->
+    <div class="toolbar-section toolbar-section-center">
+      <!-- View Mode Switcher -->
+      <div class="toolbar-group view-mode-group">
+        <button
+          type="button"
+          class="toolbar-btn"
+          :class="{ active: viewMode === 'data' }"
+          data-testid="view-data-btn"
+          title="View centerlines, footprints and source lines"
+          @click="setViewMode('data')"
+        >
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" class="toolbar-icon">
+            <path d="M4 6h12M4 10h12M4 14h12" stroke-width="1.8" stroke-linecap="round" />
+          </svg>
+          <span>Data View</span>
+        </button>
+
+        <button
+          type="button"
+          class="toolbar-btn"
+          :class="{ active: viewMode === 'realistic' }"
+          data-testid="view-realistic-btn"
+          title="View metric surface footprints and carriageway polygons"
+          @click="setViewMode('realistic')"
+        >
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" class="toolbar-icon">
+            <rect x="3" y="4" width="14" height="12" rx="2" stroke-width="1.8" />
+            <path d="M7 4v12M13 4v12" stroke-width="1.8" stroke-dasharray="2 2" />
+          </svg>
+          <span>Realistic View</span>
+        </button>
+      </div>
+
+      <div class="toolbar-divider" />
+
+      <!-- History Actions (Undo / Redo) -->
+      <div class="toolbar-group history-group">
+        <button
+          type="button"
+          class="toolbar-btn undo-btn"
+          data-testid="undo-btn"
+          :disabled="!canUndo"
+          title="Undo edit (Ctrl+Z / Cmd+Z)"
+          @click="undo"
+        >
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" class="toolbar-icon">
+            <path d="M7 8L3 12m0 0l4 4m-4-4h9a5 5 0 005-5v-1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <span>Undo</span>
+        </button>
+
+        <button
+          type="button"
+          class="toolbar-btn redo-btn"
+          data-testid="redo-btn"
+          :disabled="!canRedo"
+          title="Redo edit (Ctrl+Y / Cmd+Shift+Z)"
+          @click="redo"
+        >
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" class="toolbar-icon">
+            <path d="M13 8l4 4m0 0l-4 4m4-4H8a5 5 0 01-5-5v-1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <span>Redo</span>
+        </button>
+      </div>
+
+      <div class="toolbar-divider" />
+
+      <!-- View Bounds Actions -->
+      <div class="toolbar-group nav-bounds-group">
+        <button
+          type="button"
+          class="toolbar-btn fit-data-btn"
+          data-testid="fit-data-btn"
+          :disabled="featureCount === 0"
+          title="Fit map camera to imported data"
+          @click="emit('fitData')"
+        >
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" class="toolbar-icon">
+            <path d="M3 7V3h4M17 7V3h-4M3 13v4h4M17 13v4h-4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <span>Fit Data</span>
+        </button>
+
+        <button
+          type="button"
+          class="toolbar-btn return-area-btn"
+          data-testid="return-area-btn"
+          title="Return camera to selected area"
+          @click="emit('returnArea')"
+        >
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" class="toolbar-icon">
+            <rect x="3" y="3" width="14" height="14" rx="2" stroke-width="1.8" stroke-dasharray="2 2" />
+            <circle cx="10" cy="10" r="3" stroke-width="1.8" />
+          </svg>
+          <span>Selected Area</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Right Section: Badges, Actions, Basemap -->
+    <div class="toolbar-section toolbar-section-right">
+      <button
+        v-if="selectedFeatureId"
+        type="button"
+        class="toolbar-btn clear-select-btn"
+        title="Clear selection (Esc)"
+        @click="selectFeature(null)"
       >
-        <span class="unsaved-dot" />
-        <span>Unsaved edits</span>
-      </span>
+        Clear Selection
+      </button>
+
       <button
         v-if="warningsList.length > 0"
         type="button"
@@ -443,63 +484,7 @@ async function handleOpenFileSelected(e: Event) {
         <span class="warning-icon">⚠️</span>
         <span>{{ warningsList.length }} warning{{ warningsList.length > 1 ? 's' : '' }}</span>
       </button>
-      <button
-        v-if="selectedFeatureId"
-        type="button"
-        class="toolbar-btn clear-select-btn"
-        title="Clear selection (Esc)"
-        @click="selectFeature(null)"
-      >
-        Clear Selection
-      </button>
-    </div>
 
-    <!-- Project Export & Godot Transfer Actions -->
-    <div class="toolbar-group export-group">
-      <input
-        ref="openFileInputRef"
-        type="file"
-        accept=".geojson,.json"
-        style="display: none"
-        @change="handleOpenFileSelected"
-      />
-      <button
-        type="button"
-        class="toolbar-btn open-file-btn"
-        title="Open downloaded Overture GeoJSON or project file without Godot"
-        @click="onOpenFileClick"
-      >
-        <svg viewBox="0 0 20 20" fill="currentColor" class="toolbar-icon">
-          <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
-        </svg>
-        <span>Open File</span>
-      </button>
-      <button
-        type="button"
-        class="toolbar-btn save-btn"
-        :class="{ 'has-unsaved': isDirty }"
-        data-testid="save-project-btn"
-        title="Download reopenable editor project file (Project Envelope JSON, restores full edit state)"
-        @click="downloadEditedProject"
-      >
-        <svg viewBox="0 0 20 20" fill="currentColor" class="toolbar-icon">
-          <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
-        </svg>
-        <span>Save Project</span>
-      </button>
-
-      <button
-        type="button"
-        class="toolbar-btn export-scene-btn export-surfaces-btn"
-        data-testid="export-scene-btn"
-        title="Download effective edited GeoJSON scene payload (authoritative surfaces for Godot/GIS)"
-        @click="downloadSceneGeoJSON"
-      >
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" class="toolbar-icon">
-          <path d="M4 14v2a2 2 0 002 2h8a2 2 0 002-2v-2M10 3v10M6 9l4 4 4-4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-        <span>Export Scene</span>
-      </button>
       <div
         v-if="exportSummary.hasExclusions"
         class="toolbar-export-exclusion-chip"
@@ -521,54 +506,96 @@ async function handleOpenFileSelected(e: Event) {
         <span>{{ sceneExportPreflight.blockingErrors.length }} error{{ sceneExportPreflight.blockingErrors.length > 1 ? 's' : '' }}</span>
       </div>
 
-      <div
-        class="godot-status-badge"
-        :class="{ 'is-connected': isConnected }"
-        data-testid="godot-status-badge"
-        :title="isConnected
-          ? `Godot import server connected on port ${godotPort}. Scenes can be streamed directly into Godot.`
-          : 'Godot import server offline. Viewing, editing, project saving, and GeoJSON scene export work completely independently without Godot.'"
-      >
-        <span class="badge-dot">{{ isConnected ? '●' : '○' }}</span>
-        <span class="badge-label">{{ isConnected ? `Godot :${godotPort} (Linked)` : 'Godot (Offline)' }}</span>
+      <div class="toolbar-group export-group">
+        <input
+          ref="openFileInputRef"
+          type="file"
+          accept=".geojson,.json"
+          style="display: none"
+          @change="handleOpenFileSelected"
+        />
+        <button
+          type="button"
+          class="toolbar-btn open-file-btn"
+          title="Open downloaded Overture GeoJSON or project file without Godot"
+          @click="onOpenFileClick"
+        >
+          <svg viewBox="0 0 20 20" fill="currentColor" class="toolbar-icon">
+            <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+          </svg>
+          <span>Open File</span>
+        </button>
+
+        <button
+          type="button"
+          class="toolbar-btn save-btn"
+          :class="{ 'has-unsaved': isDirty }"
+          data-testid="save-project-btn"
+          title="Download reopenable editor project file (Project Envelope JSON, restores full edit state)"
+          @click="downloadEditedProject"
+        >
+          <svg viewBox="0 0 20 20" fill="currentColor" class="toolbar-icon">
+            <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
+          </svg>
+          <span>Save Project</span>
+        </button>
+
+        <button
+          type="button"
+          class="toolbar-btn export-scene-btn export-surfaces-btn"
+          data-testid="export-scene-btn"
+          title="Download effective edited GeoJSON scene payload (authoritative surfaces for Godot/GIS)"
+          @click="downloadSceneGeoJSON"
+        >
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" class="toolbar-icon">
+            <path d="M4 14v2a2 2 0 002 2h8a2 2 0 002-2v-2M10 3v10M6 9l4 4 4-4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <span>Export Scene</span>
+        </button>
+
+        <button
+          type="button"
+          class="toolbar-btn preflight-btn"
+          data-testid="open-preflight-btn"
+          title="Review export counts, exclusions, assumptions, and blocking geometry errors before generating the scene"
+          @click="openPreflight('godot')"
+        >
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" class="toolbar-icon">
+            <path d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <span>Preflight</span>
+        </button>
+
+        <div
+          class="godot-status-badge"
+          :class="{ 'is-connected': isConnected }"
+          data-testid="godot-status-badge"
+          :title="isConnected
+            ? `Godot import server connected on port ${godotPort}. Scenes can be streamed directly into Godot.`
+            : 'Godot import server offline. Viewing, editing, project saving, and GeoJSON scene export work completely independently without Godot.'"
+        >
+          <span class="badge-dot">{{ isConnected ? '●' : '○' }}</span>
+          <span class="badge-label">{{ isConnected ? `Godot :${godotPort}` : 'Godot Offline' }}</span>
+        </div>
+
+        <button
+          type="button"
+          class="toolbar-btn godot-btn"
+          :class="{ 'is-linked': isConnected, 'is-loading': isSending, 'is-disconnected': !isConnected }"
+          :disabled="!isConnected || isSending || featureCount === 0"
+          :title="godotBtnTitle"
+          data-testid="send-to-godot-btn"
+          @click="exportToGodot"
+        >
+          <span v-if="isSending" class="btn-spinner" />
+          <svg v-else viewBox="0 0 20 20" fill="currentColor" class="toolbar-icon">
+            <path d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" />
+          </svg>
+          <span>⚡ Send to Godot 3D</span>
+        </button>
       </div>
 
-      <button
-        type="button"
-        class="toolbar-btn preflight-btn"
-        data-testid="open-preflight-btn"
-        title="Review export counts, exclusions, assumptions, and blocking geometry errors before generating the scene"
-        @click="openPreflight('godot')"
-      >
-        <svg viewBox="0 0 20 20" fill="currentColor" class="toolbar-icon">
-          <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
-        </svg>
-        <span>Review Export</span>
-      </button>
-      <button
-        type="button"
-        class="toolbar-btn godot-btn"
-        :class="{ 'is-linked': isConnected, 'is-loading': isSending, 'is-disconnected': !isConnected }"
-        :disabled="!isConnected || isSending || featureCount === 0"
-        :title="godotBtnTitle"
-        data-testid="send-to-godot-btn"
-        @click="exportToGodot"
-      >
-        <span v-if="isSending" class="btn-spinner" />
-        <svg v-else viewBox="0 0 20 20" fill="currentColor" class="toolbar-icon">
-          <path d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" />
-        </svg>
-        <span>⚡ Send to Godot 3D</span>
-      </button>
-      <button
-        type="button"
-        class="toolbar-btn back-btn"
-        data-testid="back-to-selector-btn"
-        title="Return to Area Selector"
-        @click="setWorkspace('selector')"
-      >
-        Back to Selector
-      </button>
+      <slot name="basemap" />
     </div>
 
     <!-- Actionable Warnings Modal -->
@@ -1389,7 +1416,77 @@ async function handleOpenFileSelected(e: Event) {
 .editor-toolbar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  width: 100%;
   gap: 12px;
+}
+
+.toolbar-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolbar-section-left {
+  flex-shrink: 0;
+}
+
+.toolbar-section-center {
+  background: rgba(0, 0, 0, 0.28);
+  padding: 3px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.toolbar-section-right {
+  flex-shrink: 0;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 0 4px;
+}
+
+.brand-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+}
+
+.brand-badge-mini {
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 3px;
+  letter-spacing: 0.05em;
+}
+
+.brand-name-mini {
+  font-size: 12px;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.back-btn {
+  background: rgba(37, 99, 235, 0.2);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  color: #93c5fd;
+  font-weight: 600;
+}
+
+.back-btn:hover:not(:disabled) {
+  background: #2563eb;
+  border-color: #3b82f6;
+  color: #ffffff;
+  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.4);
 }
 
 .toolbar-group {
