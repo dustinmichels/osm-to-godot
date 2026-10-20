@@ -16,6 +16,20 @@ describe('useUrlSync - parseUrlState', () => {
     expect(state.zoom).toBe(15.5)
   })
 
+  it('parses medford-y example site URL with URL-encoded query parameters', () => {
+    const url = 'http://127.0.0.1:8080/?center=42.415261%2C-71.110368&zoom=17.16&bbox=-71.111885%2C42.414131%2C-71.108851%2C42.416392'
+    const state = parseUrlState(url)
+
+    expect(state.center).toEqual({ lat: 42.415261, lon: -71.110368 })
+    expect(state.bbox).toEqual({
+      west: -71.111885,
+      south: 42.414131,
+      east: -71.108851,
+      north: 42.416392
+    })
+    expect(state.zoom).toBe(17.16)
+  })
+
   it('supports centerpoint alias', () => {
     const url = '?centerpoint=41.391200,2.164800&bbox=2.161208,41.388505,2.168392,41.393895'
     const state = parseUrlState(url)

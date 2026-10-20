@@ -42,8 +42,8 @@ Once the **OSM Importer** plugin is enabled:
 1. Look at the bottom editor panel and click the **OSM Importer** tab (or click **🗺️ OSM Selector** on the 3D viewport toolbar).
 2. Click **🌐 Open Web Selector**. The plugin opens the embedded MapLibre web app in your default browser (running on `http://127.0.0.1:8080`).
 3. Pan or search for an area, drag a bounding box, and click **⚡ Send to Godot**.
-4. The web app transfers the data directly over HTTP into Godot. The plugin saves it to `res://data/osm_export.json`, parses roads and buildings immediately, and logs the results in the editor activity feed.
-
+4. The web app transfers the data directly over HTTP into Godot. The plugin saves it to `res://data/osm_export.json`, automatically generates the 3D city scene (`res://city_viewer.tscn`) with extruded buildings, roof triangulation, PBR materials, and physics colliders, and opens it directly in the 3D editor viewport.
+5. You can also re-generate at any time by clicking **🔨 Generate 3D City** in the bottom panel dock, or press **F5** to run the flycam inspection mode.
 ---
 
 ## Running the Web Downloader in Development Mode
@@ -103,3 +103,11 @@ Or run individual test scripts directly:
 godot --headless --path godot_project -s res://test_phase2.gd
 godot --headless --path godot_project -s res://test_http_server.gd
 ```
+
+---
+
+## Standalone Desktop Distribution
+
+To package OSM-to-Godot as a standalone, turnkey desktop application for general users (with Godot engine runtime bundled), see the detailed guide:
+
+* [**Standalone Desktop Tool & Distribution Guide**](docs/standalone_distribution.md)

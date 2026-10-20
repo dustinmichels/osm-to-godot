@@ -1,0 +1,7 @@
+[gd_resource type="StandardMaterial3D" format=3]
+
+[resource]
+resource_name = "bike_lane"
+cull_mode = 2
+albedo_color = Color(0.1254902, 0.41960785, 0.25882354, 1)
+roughness = 0.75

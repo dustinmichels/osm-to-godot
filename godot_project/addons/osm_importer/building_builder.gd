@@ -175,55 +175,95 @@ static func parse_color(color_str: Variant, default_color: Color) -> Color:
 			
 	return default_color
 
-## Generate wall StandardMaterial3D based on tags
-static func resolve_wall_material(tags: Dictionary) -> StandardMaterial3D:
-	var mat = StandardMaterial3D.new()
-	mat.cull_mode = BaseMaterial3D.CULL_BACK
-	
+## Generate wall StandardMaterial3D based on tags, supporting triplanar mapping
+static func resolve_wall_material(tags: Dictionary, enable_triplanar: bool = true) -> StandardMaterial3D:
+	var mat: StandardMaterial3D
 	var mat_name: String = str(tags.get("building:material", "")).to_lower()
-	var preset: Dictionary = MATERIAL_PRESETS["default_wall"]
-	if MATERIAL_PRESETS.has(mat_name):
-		preset = MATERIAL_PRESETS[mat_name]
-		mat.resource_name = "wall_" + mat_name
-	else:
-		mat.resource_name = "wall_default"
-		
-	mat.albedo_color = preset["color"]
-	mat.roughness = preset["roughness"]
-	mat.metallic = preset["metallic"]
-	
-	# Check building:colour or colour override
 	var col_tag = tags.get("building:colour", tags.get("colour", null))
-	if col_tag != null:
-		mat.albedo_color = parse_color(col_tag, mat.albedo_color)
-		mat.resource_name += "_" + str(col_tag)
+	
+	if mat_name.is_empty() and col_tag == null and ResourceLoader.exists("res://materials/building_wall_default.tres"):
+		var base_res = load("res://materials/building_wall_default.tres") as StandardMaterial3D
+		if base_res != null:
+			mat = base_res.duplicate()
+			
+	if mat == null:
+		mat = StandardMaterial3D.new()
+		mat.cull_mode = BaseMaterial3D.CULL_BACK
+		
+		var preset: Dictionary = MATERIAL_PRESETS["default_wall"]
+		if MATERIAL_PRESETS.has(mat_name):
+			preset = MATERIAL_PRESETS[mat_name]
+			mat.resource_name = "wall_" + mat_name
+		else:
+			mat.resource_name = "wall_default"
+			
+		mat.albedo_color = preset["color"]
+		mat.roughness = preset["roughness"]
+		mat.metallic = preset["metallic"]
+		
+		# Check building:colour or colour override
+		if col_tag != null:
+			mat.albedo_color = parse_color(col_tag, mat.albedo_color)
+			mat.resource_name += "_" + str(col_tag)
+			
+	if enable_triplanar:
+		mat.uv1_triplanar = true
+		mat.uv1_world_triplanar = true
 		
 	return mat
 
 ## Generate roof StandardMaterial3D based on tags
 static func resolve_roof_material(tags: Dictionary) -> StandardMaterial3D:
-	var mat = StandardMaterial3D.new()
-	mat.cull_mode = BaseMaterial3D.CULL_BACK
-	
+	var mat: StandardMaterial3D
 	var mat_name: String = str(tags.get("roof:material", "")).to_lower()
-	var preset: Dictionary = MATERIAL_PRESETS["default_roof"]
-	if MATERIAL_PRESETS.has(mat_name):
-		preset = MATERIAL_PRESETS[mat_name]
-		mat.resource_name = "roof_" + mat_name
-	else:
-		mat.resource_name = "roof_default"
-		
-	mat.albedo_color = preset["color"]
-	mat.roughness = preset["roughness"]
-	mat.metallic = preset["metallic"]
+	var col_tag = tags.get("roof:colour", null)
 	
-	# Check roof:colour override
+	if mat_name.is_empty() and col_tag == null and ResourceLoader.exists("res://materials/building_roof_default.tres"):
+		var base_res = load("res://materials/building_roof_default.tres") as StandardMaterial3D
+		if base_res != null:
+			mat = base_res.duplicate()
+			
+	if mat == null:
+		mat = StandardMaterial3D.new()
+		mat.cull_mode = BaseMaterial3D.CULL_BACK
+		
+		var preset: Dictionary = MATERIAL_PRESETS["default_roof"]
+		if MATERIAL_PRESETS.has(mat_name):
+			preset = MATERIAL_PRESETS[mat_name]
+			mat.resource_name = "roof_" + mat_name
+		else:
+			mat.resource_name = "roof_default"
+			
+		mat.albedo_color = preset["color"]
+		mat.roughness = preset["roughness"]
+		mat.metallic = preset["metallic"]
+		
+		# Check roof:colour override
+		if col_tag != null:
+			mat.albedo_color = parse_color(col_tag, mat.albedo_color)
+			mat.resource_name += "_" + str(col_tag)
+			
+	return mat
+
+## Get a stable unique key for wall material grouping
+static func get_wall_material_key(tags: Dictionary) -> String:
+	var mat_name: String = str(tags.get("building:material", "")).strip_edges().to_lower()
+	var col_tag = tags.get("building:colour", tags.get("colour", null))
+	if col_tag != null:
+		return mat_name + "_col_" + str(col_tag).strip_edges().to_lower()
+	if not mat_name.is_empty():
+		return mat_name
+	return "default_wall"
+
+## Get a stable unique key for roof material grouping
+static func get_roof_material_key(tags: Dictionary) -> String:
+	var mat_name: String = str(tags.get("roof:material", "")).strip_edges().to_lower()
 	var col_tag = tags.get("roof:colour", null)
 	if col_tag != null:
-		mat.albedo_color = parse_color(col_tag, mat.albedo_color)
-		mat.resource_name += "_" + str(col_tag)
-		
-	return mat
+		return mat_name + "_col_" + str(col_tag).strip_edges().to_lower()
+	if not mat_name.is_empty():
+		return mat_name
+	return "default_roof"
 
 # --- 3.2 & 3.3 Mesh Construction (Roof & Walls) ---
 
@@ -436,14 +476,149 @@ static func create_building_node(building: Dictionary, create_collider: bool = t
 		
 	return instance
 
-## Build a root Node3D containing all buildings
-static func build_buildings_node(buildings: Array, create_colliders: bool = true) -> Node3D:
+## Build a root Node3D containing batched building meshes grouped by material
+static func build_batched_buildings_node(buildings: Array, create_colliders: bool = true) -> Node3D:
+	return build_buildings_node(buildings, create_colliders, true)
+
+## Build a root Node3D containing all buildings.
+## When batched is true, combines building meshes by material into consolidated multi-surface meshes
+## to drastically reduce draw calls and node count.
+## When batched is false (default), retains 1 MeshInstance3D per building.
+static func build_buildings_node(buildings: Array, create_colliders: bool = true, batched: bool = false) -> Node3D:
 	var root = Node3D.new()
 	root.name = "Buildings"
 	
+	if not batched:
+		for b in buildings:
+			if b is Dictionary:
+				var node = create_building_node(b, create_colliders)
+				root.add_child(node)
+		return root
+		
+	# Batched mode: group walls by wall material and roofs by roof material
+	var wall_batches: Dictionary = {} # mat_key -> { "material": StandardMaterial3D, "vertices": ..., "normals": ..., "uvs": ..., "indices": ... }
+	var roof_batches: Dictionary = {} # mat_key -> { "material": StandardMaterial3D, "vertices": ..., "normals": ..., "uvs": ..., "indices": ... }
+	
 	for b in buildings:
-		if b is Dictionary:
-			var node = create_building_node(b, create_colliders)
-			root.add_child(node)
+		if not (b is Dictionary):
+			continue
+		var m_data = build_building_mesh_data(b)
+		var tags: Dictionary = b.get("tags", {})
+		
+		# 1. Accumulate walls
+		var w_key = get_wall_material_key(tags)
+		if not wall_batches.has(w_key):
+			wall_batches[w_key] = {
+				"material": m_data.get("wall_material"),
+				"vertices": PackedVector3Array(),
+				"normals": PackedVector3Array(),
+				"uvs": PackedVector2Array(),
+				"indices": PackedInt32Array()
+			}
+		var w_target = wall_batches[w_key]
+		var w_base_idx = w_target["vertices"].size()
+		var w_walls: Dictionary = m_data.get("walls", {})
+		var w_v: PackedVector3Array = w_walls.get("vertices", PackedVector3Array())
+		var w_n: PackedVector3Array = w_walls.get("normals", PackedVector3Array())
+		var w_uv: PackedVector2Array = w_walls.get("uvs", PackedVector2Array())
+		var w_idx: PackedInt32Array = w_walls.get("indices", PackedInt32Array())
+		
+		w_target["vertices"].append_array(w_v)
+		w_target["normals"].append_array(w_n)
+		w_target["uvs"].append_array(w_uv)
+		for idx in w_idx:
+			w_target["indices"].append(w_base_idx + idx)
 			
+		# 2. Accumulate roofs
+		var r_key = get_roof_material_key(tags)
+		if not roof_batches.has(r_key):
+			roof_batches[r_key] = {
+				"material": m_data.get("roof_material"),
+				"vertices": PackedVector3Array(),
+				"normals": PackedVector3Array(),
+				"uvs": PackedVector2Array(),
+				"indices": PackedInt32Array()
+			}
+		var r_target = roof_batches[r_key]
+		var r_base_idx = r_target["vertices"].size()
+		var r_roof: Dictionary = m_data.get("roof", {})
+		var r_v: PackedVector3Array = r_roof.get("vertices", PackedVector3Array())
+		var r_n: PackedVector3Array = r_roof.get("normals", PackedVector3Array())
+		var r_uv: PackedVector2Array = r_roof.get("uvs", PackedVector2Array())
+		var r_idx: PackedInt32Array = r_roof.get("indices", PackedInt32Array())
+		
+		r_target["vertices"].append_array(r_v)
+		r_target["normals"].append_array(r_n)
+		r_target["uvs"].append_array(r_uv)
+		for idx in r_idx:
+			r_target["indices"].append(r_base_idx + idx)
+			
+	# Create MeshInstance3D nodes for batched walls
+	for w_key in wall_batches.keys():
+		var batch = wall_batches[w_key]
+		var verts: PackedVector3Array = batch["vertices"]
+		var idxs: PackedInt32Array = batch["indices"]
+		if verts.is_empty() or idxs.is_empty():
+			continue
+			
+		var arrays = []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = verts
+		arrays[Mesh.ARRAY_NORMAL] = batch["normals"]
+		arrays[Mesh.ARRAY_TEX_UV] = batch["uvs"]
+		arrays[Mesh.ARRAY_INDEX] = idxs
+		
+		var mesh = ArrayMesh.new()
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		mesh.surface_set_material(0, batch["material"])
+		
+		var mi = MeshInstance3D.new()
+		mi.name = "BuildingWalls_" + w_key.capitalize().replace(" ", "_")
+		mi.mesh = mesh
+		
+		if create_colliders:
+			var sb = StaticBody3D.new()
+			sb.name = "StaticBody3D"
+			var cs = CollisionShape3D.new()
+			cs.name = "CollisionShape3D"
+			cs.shape = mesh.create_trimesh_shape()
+			sb.add_child(cs)
+			mi.add_child(sb)
+			
+		root.add_child(mi)
+		
+	# Create MeshInstance3D nodes for batched roofs
+	for r_key in roof_batches.keys():
+		var batch = roof_batches[r_key]
+		var verts: PackedVector3Array = batch["vertices"]
+		var idxs: PackedInt32Array = batch["indices"]
+		if verts.is_empty() or idxs.is_empty():
+			continue
+			
+		var arrays = []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = verts
+		arrays[Mesh.ARRAY_NORMAL] = batch["normals"]
+		arrays[Mesh.ARRAY_TEX_UV] = batch["uvs"]
+		arrays[Mesh.ARRAY_INDEX] = idxs
+		
+		var mesh = ArrayMesh.new()
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		mesh.surface_set_material(0, batch["material"])
+		
+		var mi = MeshInstance3D.new()
+		mi.name = "BuildingRoofs_" + r_key.capitalize().replace(" ", "_")
+		mi.mesh = mesh
+		
+		if create_colliders:
+			var sb = StaticBody3D.new()
+			sb.name = "StaticBody3D"
+			var cs = CollisionShape3D.new()
+			cs.name = "CollisionShape3D"
+			cs.shape = mesh.create_trimesh_shape()
+			sb.add_child(cs)
+			mi.add_child(sb)
+			
+		root.add_child(mi)
+		
 	return root

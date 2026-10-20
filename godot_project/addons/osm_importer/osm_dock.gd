@@ -4,10 +4,16 @@ extends PanelContainer
 
 signal open_browser_requested()
 signal open_dev_browser_requested()
+signal generate_requested(create_colliders: bool, custom_path: String)
 
 var status_label: Label
 var log_display: RichTextLabel
 var server_url_label: Label
+var auto_gen_checkbox: CheckBox
+var colliders_checkbox: CheckBox
+var generate_btn: Button
+var chunking_checkbox: CheckBox
+var dataset_option: OptionButton
 
 func _init() -> void:
 	custom_minimum_size = Vector2(0, 180)
@@ -88,6 +94,46 @@ func _build_ui() -> void:
 	file_dest_lbl.add_theme_font_size_override("font_size", 10.5)
 	left_vbox.add_child(file_dest_lbl)
 
+	var sep = HSeparator.new()
+	sep.add_theme_constant_override("separation", 8)
+	left_vbox.add_child(sep)
+
+	var gen_header = Label.new()
+	gen_header.text = "3D Generation:"
+	gen_header.add_theme_font_size_override("font_size", 12)
+	left_vbox.add_child(gen_header)
+
+	auto_gen_checkbox = CheckBox.new()
+	auto_gen_checkbox.text = "Auto-build on Import"
+	auto_gen_checkbox.button_pressed = true
+	auto_gen_checkbox.tooltip_text = "Automatically generate 3D buildings when data is received from browser"
+	left_vbox.add_child(auto_gen_checkbox)
+
+	colliders_checkbox = CheckBox.new()
+	colliders_checkbox.text = "Generate Colliders"
+	colliders_checkbox.button_pressed = true
+	colliders_checkbox.tooltip_text = "Generate StaticBody3D collision shapes for each building"
+	left_vbox.add_child(colliders_checkbox)
+	chunking_checkbox = CheckBox.new()
+	chunking_checkbox.text = "Spatial Chunking (500m)"
+	chunking_checkbox.button_pressed = false
+	chunking_checkbox.tooltip_text = "Partition large city scopes into 500m x 500m grid chunks with distance-based LOD culling"
+	left_vbox.add_child(chunking_checkbox)
+	var dataset_lbl = Label.new()
+	dataset_lbl.text = "Dataset Source:"
+	dataset_lbl.add_theme_font_size_override("font_size", 11)
+	left_vbox.add_child(dataset_lbl)
+
+	dataset_option = OptionButton.new()
+	dataset_option.add_item("Current Export (res://data/osm_export.json)", 0)
+	dataset_option.add_item("Medford-Y Preset (res://data/medford_y_export.json)", 1)
+	left_vbox.add_child(dataset_option)
+
+	generate_btn = Button.new()
+	generate_btn.text = "🔨 Generate 3D City"
+	generate_btn.tooltip_text = "Build 3D city scene from selected dataset"
+	generate_btn.pressed.connect(func(): generate_requested.emit(colliders_checkbox.button_pressed, get_selected_dataset_path()))
+	left_vbox.add_child(generate_btn)
 	# Right Activity Log
 	var right_vbox = VBoxContainer.new()
 	right_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -138,3 +184,32 @@ func log_import_success(stats: Dictionary, metadata: Dictionary, save_path: Stri
 func log_import_error(err_msg: String) -> void:
 	var time_str = Time.get_time_string_from_system()
 	log_display.append_text("[color=#38bdf8][%s][/color] [color=#f87171]Import Failed:[/color] %s\n" % [time_str, err_msg])
+
+func is_auto_generate_enabled() -> bool:
+	return auto_gen_checkbox.button_pressed if auto_gen_checkbox else true
+
+func should_create_colliders() -> bool:
+	return colliders_checkbox.button_pressed if colliders_checkbox else true
+func should_use_spatial_chunks() -> bool:
+	return chunking_checkbox.button_pressed if chunking_checkbox else false
+
+func get_selected_dataset_path() -> String:
+	if dataset_option == null:
+		return "res://data/osm_export.json"
+	match dataset_option.selected:
+		1:
+			return "res://data/medford_y_export.json"
+		_:
+			return "res://data/osm_export.json"
+
+
+func log_generation_success(count: int, scene_path: String) -> void:
+	var time_str = Time.get_time_string_from_system()
+	var log_entry = "[color=#38bdf8][%s][/color] [color=#38bdf8][b]3D City Generated![/b][/color]\n" % time_str
+	log_entry += "  [color=#e2e8f0]• Generated:[/color] [b]%d[/b] buildings with materials & colliders\n" % count
+	log_entry += "  [color=#94a3b8]• Active Scene: %s[/color]\n" % scene_path
+	log_display.append_text(log_entry)
+
+func log_generation_error(err_msg: String) -> void:
+	var time_str = Time.get_time_string_from_system()
+	log_display.append_text("[color=#38bdf8][%s][/color] [color=#f87171]Generation Error:[/color] %s\n" % [time_str, err_msg])

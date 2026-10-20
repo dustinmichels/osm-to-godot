@@ -10,7 +10,7 @@ import {
 } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
-import { useBBox, type HandleType } from '@/composables/useBBox'
+import { useBBox, type HandleType, type BoundingBox } from '@/composables/useBBox'
 import { useMapStyle } from '@/composables/useMapStyle'
 setWorkerUrl(maplibreWorkerUrl)
 
@@ -320,8 +320,25 @@ watch(currentStyle, (newStyle) => {
   if (!map) return
   map.setStyle(newStyle.style)
 })
-function flyTo(lon: number, lat: number, extent?: [number, number, number, number], customRadius = 300) {
+function flyTo(
+  lon: number,
+  lat: number,
+  extent?: [number, number, number, number],
+  customRadius = 300,
+  targetZoom?: number,
+  targetBBox?: BoundingBox
+) {
   if (!map) return
+
+  if (targetBBox) {
+    setBBox(targetBBox)
+    map.flyTo({
+      center: [lon, lat],
+      zoom: targetZoom ?? 15.5,
+      duration: 1400
+    })
+    return
+  }
 
   if (extent && extent.length === 4) {
     const [minLon, maxLat, maxLon, minLat] = extent
@@ -330,7 +347,7 @@ function flyTo(lon: number, lat: number, extent?: [number, number, number, numbe
         [Math.min(minLon, maxLon), Math.min(minLat, maxLat)],
         [Math.max(minLon, maxLon), Math.max(minLat, maxLat)]
       ],
-      { padding: 80, maxZoom: 17, duration: 1400 }
+      { padding: 80, maxZoom: targetZoom ?? 17, duration: 1400 }
     )
     setBBox({
       west: Math.min(minLon, maxLon),
@@ -341,7 +358,7 @@ function flyTo(lon: number, lat: number, extent?: [number, number, number, numbe
   } else {
     map.flyTo({
       center: [lon, lat],
-      zoom: 15.5,
+      zoom: targetZoom ?? 15.5,
       duration: 1400
     })
     initDefaultBBox(lon, lat, customRadius)

@@ -2,6 +2,6 @@
 
 [resource]
 resource_name = "building_wall_default"
-albedo_color = Color(0.815686, 0.784314, 0.721569, 1)
+albedo_color = Color(0.8156863, 0.78431374, 0.72156864, 1)
 roughness = 0.8
-cull_mode = 2
+uv1_triplanar = true

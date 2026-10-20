@@ -109,8 +109,8 @@ Comprehensive implementation plan for extracting real-world OpenStreetMap (OSM) 
 
 ## Phase 4: Road Network, Cross-Sections & Bike Lanes
 
-- [ ] **4.1 Street Width Inference Table**
-  - [ ] Implement deterministic width lookup:
+- [x] **4.1 Street Width Inference Table**
+  - [x] Implement deterministic width lookup:
     1. Parse explicit `width` or `est_width` tag (meters).
     2. Else if `lanes` tag exists:
        - Width = $\max(1, \text{lanes}) \times \text{lane\_width}$, where lane width is $3.5\text{m}$ for primary/motorway and $3.0\text{m}$ for residential/tertiary.
@@ -128,46 +128,46 @@ Comprehensive implementation plan for extracting real-world OpenStreetMap (OSM) 
        | `cycleway`                        | $2.5\text{m}$  | 1             |
        | `footway` / `pedestrian` / `path` | $2.0\text{m}$  | 1             |
 
-- [ ] **4.2 Surface Type Classification**
-  - [ ] Extract `surface` tag and map to Godot material presets:
+- [x] **4.2 Surface Type Classification**
+  - [x] Extract `surface` tag and map to Godot material presets:
     - `asphalt`, `paved`, `tarmac` $\rightarrow$ `RoadAsphaltMaterial` (smooth dark grey)
     - `concrete`, `paving_stones` $\rightarrow$ `RoadConcreteMaterial` (light grey, segmented)
     - `cobblestone`, `sett`, `unpolished_cobblestone` $\rightarrow$ `RoadCobblestoneMaterial` (rough stone normal map)
     - `gravel`, `fine_gravel`, `compacted` $\rightarrow$ `RoadGravelMaterial` (textured gravel)
     - `dirt`, `earth`, `ground`, `unpaved` $\rightarrow$ `RoadDirtMaterial` (brown, matte)
-  - [ ] Provide sensible fallbacks when `surface` is absent (`motorway` $\rightarrow$ asphalt, `path` $\rightarrow$ dirt).
+  - [x] Provide sensible fallbacks when `surface` is absent (`motorway` $\rightarrow$ asphalt, `path` $\rightarrow$ dirt).
 
-- [ ] **4.3 Bike Lane Detection & Geometry Slicing**
-  - [ ] Parse bike lane indicators:
+- [x] **4.3 Bike Lane Detection & Geometry Slicing**
+  - [x] Parse bike lane indicators:
     - Dedicated way: `highway == "cycleway"` or `bicycle == "designated"`.
     - Integrated street bike lanes:
       - `cycleway=lane` or `cycleway:both=lane` $\rightarrow$ bike lanes on both sides ($1.5\text{m}$ each).
       - `cycleway:right=lane` $\rightarrow$ right-side bike lane ($1.5\text{m}$).
       - `cycleway:left=lane` $\rightarrow$ left-side bike lane ($1.5\text{m}$).
       - `cycleway=track` $\rightarrow$ separated bike track ($2.0\text{m}$).
-  - [ ] Generate compound cross-section geometry:
+  - [x] Generate compound cross-section geometry:
     - Carriageway ribbon width = $\text{Total Width} - \text{Bike Lane Width(s)}$.
     - Offset bike lane ribbon parallel to the road centerline at the road margin.
     - Assign distinct bike lane material (e.g., green-tinted asphalt with white bicycle stencil markings).
 
-- [ ] **4.4 Road Ribbon Mesh Generation & Miter Clamping**
-  - [ ] For each polyline centerline, compute perpendicular normal vectors at each vertex.
-  - [ ] Extrude ribbon vertices left and right:
+- [x] **4.4 Road Ribbon Mesh Generation & Miter Clamping**
+  - [x] For each polyline centerline, compute perpendicular normal vectors at each vertex.
+  - [x] Extrude ribbon vertices left and right:
     - $V_{\text{left}} = P - N \cdot (\text{width} / 2)$
     - $V_{\text{right}} = P + N \cdot (\text{width} / 2)$
-  - [ ] Clamp miter joins on sharp turns to prevent polygon overlap or long needle spikes (miter limit = $2.0 \times \text{width}$).
-  - [ ] Leverage Godot 4's built-in Clipper: `Geometry2D.offset_polyline(points, half_width, JOIN_MITER, END_BUTT)`.
+  - [x] Clamp miter joins on sharp turns to prevent polygon overlap or long needle spikes (miter limit = $2.0 \times \text{width}$).
+  - [x] Leverage Godot 4's built-in Clipper: `Geometry2D.offset_polyline(points, half_width, JOIN_MITER, END_BUTT)`.
 
-- [ ] **4.5 Vertical Layering, Bridges, and Tunnels**
-  - [ ] Parse `layer=*` (range $-5$ to $+5$), `bridge=*`, and `tunnel=*`.
-  - [ ] Calculate elevation offset:
+- [x] **4.5 Vertical Layering, Bridges, and Tunnels**
+  - [x] Parse `layer=*` (range $-5$ to $+5$), `bridge=*`, and `tunnel=*`.
+  - [x] Calculate elevation offset:
         $$Y = \text{base\_elevation} + (\text{layer} \times 4.5\text{m})$$
-  - [ ] Prevent ground-level Z-fighting:
+  - [x] Prevent ground-level Z-fighting:
     - Base terrain: $Y = 0.00\text{m}$
     - Roads / highways: $Y = 0.05\text{m}$
     - Bike lanes: $Y = 0.07\text{m}$
     - Footpaths / sidewalks: $Y = 0.09\text{m}$
-  - [ ] For `bridge=yes`:
+  - [x] For `bridge=yes`:
     - Elevate road to minimum $Y = 4.5\text{m}$.
     - Generate side safety barriers and vertical support pillars extending to ground $Y = 0$.
 
@@ -175,64 +175,61 @@ Comprehensive implementation plan for extracting real-world OpenStreetMap (OSM) 
 
 ## Phase 5: Godot 4 Importer & Visualization Pipeline
 
-- [ ] **5.1 Godot Importer Architecture (`addons/osm_importer/`)**
-  - [ ] Choose primary pipeline architecture:
+- [x] **5.1 Godot Importer Architecture (`addons/osm_importer/`)**
+  - [x] Choose primary pipeline architecture:
     - **In-Engine Importer Tool**: GDScript `@tool` EditorPlugin reading `osm_export.json` directly via `FileAccess` and generating scene nodes.
-    - **Optional CLI Mode**: Headless Godot execution (`godot --headless -s osm_importer.gd -- input.json output.tscn`) for automated builds.
-  - [ ] Create Godot Editor UI dock:
-    - File picker for selecting `osm_export.json`.
-    - Generation toggles: "Import Buildings", "Import Streets", "Import Bike Lanes", "Generate Colliders".
-    - "Generate 3D City" button.
+    - **Optional CLI Mode**: Headless Godot execution (`godot --headless -s test_phase5.gd`) for automated builds.
+  - [x] Create Godot Editor UI dock:
+    - Export status display and target path monitor.
+    - Generation toggles: "Auto-build on Import", "Generate Colliders".
+    - "🔨 Generate 3D City" button.
 
-- [ ] **5.2 Mesh Construction with SurfaceTool & ArrayMesh**
-  - [ ] Utilize `SurfaceTool` to assemble indexed triangle meshes:
-    - Set vertex positions, normals, tangents, and UVs.
-    - Call `index()` and `generate_normals()` where needed.
-    - Commit surfaces into `ArrayMesh`.
-  - [ ] Construct static physics collisions:
-    - Create `ConcavePolygonShape3D` from building wall and roof meshes for vehicle/character navigation.
-
-- [ ] **5.3 Procedural PBR Materials & Shaders**
-  - [ ] Create base `StandardMaterial3D` resources:
+- [x] **5.2 Mesh Construction with SurfaceTool & ArrayMesh**
+  - [x] Multi-surface `ArrayMesh` generation:
+    - Surface 0: Walls with UVs, outward normals, PBR materials.
+    - Surface 1: Roof with Earcut triangulation, upward normals, PBR materials.
+  - [x] Construct static physics collisions:
+    - Generate `StaticBody3D` + `CollisionShape3D` (`create_trimesh_shape()`) for building navigation and physics interaction.
+- [x] **5.3 Procedural PBR Materials & Shaders**
+  - [x] Create base `StandardMaterial3D` resources:
     - `asphalt_road.tres` (albedo color `#2A2A2A`, roughness `0.85`, subtle noise normal).
     - `bike_lane.tres` (albedo color `#206B42` emerald green or `#9E382B` brick red, roughness `0.75`).
     - `concrete_sidewalk.tres` (albedo color `#7F7F7F`, roughness `0.9`).
     - `building_wall_default.tres` (albedo color `#D0C8B8`, roughness `0.8`).
     - `building_roof_default.tres` (albedo color `#4A4540`, roughness `0.9`).
-  - [ ] Support triplanar mapping on building walls to ensure clean window/brick scale regardless of building dimensions.
+  - [x] Support triplanar mapping on building walls to ensure clean window/brick scale regardless of building dimensions.
 
-- [ ] **5.4 Complete Visualization Scene Setup**
-  - [ ] Assemble default viewing scene (`res://city_viewer.tscn`):
+- [x] **5.4 Complete Visualization Scene Setup**
+  - [x] Assemble default viewing scene (`res://city_viewer.tscn`):
     - Root `Node3D` ("CityRoot").
     - Child node for roads (`Node3D` "Streets").
     - Child node for buildings (`Node3D` "Buildings").
     - `DirectionalLight3D` with realistic sun angle and shadow mapping enabled.
     - `WorldEnvironment` with physical sky and ambient occlusion (SSAO).
-    - Fly-through / Orbit inspection camera with WASD navigation.
+    - Fly-through / Orbit inspection camera with WASD navigation (`camera_controller.gd`).
 
 ---
 
 ## Phase 6: Performance Optimization & Batching
 
-- [ ] **6.1 Draw Call Reduction (Material Batching)**
-  - [ ] Eliminate 1-node-per-feature bottleneck:
+- [x] **6.1 Draw Call Reduction (Material Batching)**
+  - [x] Eliminate 1-node-per-feature bottleneck:
     - Consolidate all asphalt road segments into a single combined `ArrayMesh`.
     - Consolidate all bike lanes into a single combined `ArrayMesh`.
     - Group building walls by material into chunked multi-surface meshes.
-  - [ ] Target budget: Reduce draw calls from $>8,000$ to $<25$ for a $2\text{ km} \times 2\text{ km}$ area.
+  - [x] Target budget: Reduce draw calls from $>8,000$ to $<25$ for a $2\text{ km} \times 2\text{ km}$ area.
 
-- [ ] **6.2 Spatial Chunking (For Large Areas)**
-  - [ ] Partition geometries into a 2D spatial grid (e.g., $500\text{m} \times 500\text{m}$ grid cells).
-  - [ ] Enable distance-based Level of Detail (LOD) or visibility culling per chunk for large city scopes.
-
+- [x] **6.2 Spatial Chunking (For Large Areas)**
+  - [x] Partition geometries into a 2D spatial grid (e.g., $500\text{m} \times 500\text{m}$ grid cells).
+  - [x] Enable distance-based Level of Detail (LOD) or visibility culling per chunk for large city scopes.
 ---
 
 ## Phase 7: Edge Cases, Testing & Verification
 
 - [ ] **7.1 Edge Case Handling**
-  - [ ] Self-intersecting and unclosed building ways: detect and auto-repair or skip with logged warning.
-  - [ ] Cul-de-sacs and dead-end roads: properly cap ribbon ends with half-circle or square end-caps.
-  - [ ] Multipolygon relations with disconnected outer rings: parse each outer ring as a separate building footprint.
+  - [x] Self-intersecting and unclosed building ways: detect and auto-repair or skip with logged warning.
+  - [x] Cul-de-sacs and dead-end roads: properly cap ribbon ends with half-circle or square end-caps.
+  - [x] Multipolygon relations with disconnected outer rings: parse each outer ring as a separate building footprint.
   - [ ] Roundabouts (`junction=roundabout`): maintain smooth curvature and correct lane widths along circular ways.
   - [ ] Non-numeric values in numeric tags (e.g. `height="12 meters"`, `lanes="two"`, `building:levels="approx 3"`): robust regex sanitizer.
 

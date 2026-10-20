@@ -5,7 +5,7 @@ import SearchBar from '@/components/SearchBar.vue'
 import TelemetryPanel from '@/components/TelemetryPanel.vue'
 import ExportControls from '@/components/ExportControls.vue'
 import BasemapSelector from '@/components/BasemapSelector.vue'
-import { useBBox } from '@/composables/useBBox'
+import { useBBox, type BoundingBox } from '@/composables/useBBox'
 import { parseUrlState, useUrlSync } from '@/composables/useUrlSync'
 import type { CameraChangePayload } from '@/components/MapView.vue'
 
@@ -61,7 +61,9 @@ interface PresetLocation {
   subtitle: string
   lon: number
   lat: number
-  radiusMeters: number
+  radiusMeters?: number
+  zoom?: number
+  bbox?: BoundingBox
 }
 
 const PRESETS: PresetLocation[] = [
@@ -92,6 +94,19 @@ const PRESETS: PresetLocation[] = [
     lon: 139.7016,
     lat: 35.6595,
     radiusMeters: 300
+  },
+  {
+    name: 'Medford-Y',
+    subtitle: 'Medford Square fork & intersection',
+    lon: -71.110368,
+    lat: 42.415261,
+    zoom: 17.16,
+    bbox: {
+      west: -71.111885,
+      south: 42.414131,
+      east: -71.108851,
+      north: 42.416392
+    }
   }
 ]
 
@@ -105,7 +120,14 @@ function onSearchSelect(payload: {
 }
 
 function applyPreset(preset: PresetLocation) {
-  mapViewRef.value?.flyTo(preset.lon, preset.lat, undefined, preset.radiusMeters)
+  mapViewRef.value?.flyTo(
+    preset.lon,
+    preset.lat,
+    undefined,
+    preset.radiusMeters,
+    preset.zoom,
+    preset.bbox
+  )
 }
 
 function resetBoxToCenter() {

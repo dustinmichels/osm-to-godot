@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { useBBox } from './useBBox'
+import { useBBox, type BoundingBox } from './useBBox'
 import {
   fetchOverpass,
   fetchOsmApiFallback,
@@ -7,16 +7,53 @@ import {
   type OSMExportPayload,
   type ExportMetadata
 } from '@/services/overpass'
+import medfordYExport from '@/data/medford_y_export.json'
+
+export interface CachedPreset {
+  name: string
+  bbox: BoundingBox
+  payload: OSMExportPayload
+}
+
+export const PRESET_CACHES: CachedPreset[] = [
+  {
+    name: 'medford-y',
+    bbox: {
+      west: -71.111885,
+      south: 42.414131,
+      east: -71.108851,
+      north: 42.416392
+    },
+    payload: medfordYExport as unknown as OSMExportPayload
+  }
+]
+
+export function matchesBBox(a: BoundingBox, b: BoundingBox, tolerance = 0.0008): boolean {
+  return (
+    Math.abs(a.west - b.west) < tolerance &&
+    Math.abs(a.south - b.south) < tolerance &&
+    Math.abs(a.east - b.east) < tolerance &&
+    Math.abs(a.north - b.north) < tolerance
+  )
+}
+
+export function getCacheKey(box: BoundingBox): string {
+  return `osm_cache_${box.south.toFixed(4)}_${box.west.toFixed(4)}_${box.north.toFixed(4)}_${box.east.toFixed(4)}`
+}
+
+export interface ExecuteExportOptions {
+  forceFallback?: boolean
+  bypassCache?: boolean
+}
 
 const isLoading = ref(false)
 const statusMessage = ref('')
 const errorMessage = ref<string | null>(null)
 const lastExportPayload = ref<OSMExportPayload | null>(null)
-
 export function useOverpass() {
   const { normalizedBBox, centroid, dimensions, areaKm2 } = useBBox()
 
-  async function executeExport(options: { forceFallback?: boolean } = {}): Promise<OSMExportPayload | null> {
+  async function executeExport(options: ExecuteExportOptions = {}): Promise<OSMExportPayload | null> {
     const box = normalizedBBox.value
     const center = centroid.value
     const dims = dimensions.value
@@ -24,6 +61,34 @@ export function useOverpass() {
     if (!box || !center || !dims) {
       errorMessage.value = 'Please select a valid bounding box first.'
       return null
+    }
+
+    if (!options.bypassCache) {
+      // 1. Check bundled preset cache (offline / instant)
+      const cachedPreset = PRESET_CACHES.find((p) => matchesBBox(box, p.bbox))
+      if (cachedPreset) {
+        lastExportPayload.value = cachedPreset.payload
+        statusMessage.value = `Loaded cached OSM data (${cachedPreset.payload.elements.length} elements, offline)!`
+        return cachedPreset.payload
+      }
+
+      // 2. Check session storage cache
+      if (typeof sessionStorage !== 'undefined') {
+        try {
+          const cacheKey = getCacheKey(box)
+          const stored = sessionStorage.getItem(cacheKey)
+          if (stored) {
+            const cached = JSON.parse(stored) as OSMExportPayload
+            if (cached && Array.isArray(cached.elements)) {
+              lastExportPayload.value = cached
+              statusMessage.value = `Loaded from session cache (${cached.elements.length} elements, offline)!`
+              return cached
+            }
+          }
+        } catch (e) {
+          console.warn('Session cache read error:', e)
+        }
+      }
     }
 
     isLoading.value = true
@@ -112,6 +177,14 @@ export function useOverpass() {
       const payload: OSMExportPayload = {
         metadata,
         elements
+      }
+      if (typeof sessionStorage !== 'undefined') {
+        try {
+          const cacheKey = getCacheKey(box)
+          sessionStorage.setItem(cacheKey, JSON.stringify(payload))
+        } catch (e) {
+          // Quota exceeded
+        }
       }
 
       lastExportPayload.value = payload

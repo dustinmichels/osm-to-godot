@@ -8,6 +8,7 @@ func _init() -> void:
 	print("========================================")
 
 	var server = OSMServer.new(8085)
+	server.save_file_path = "res://data/test_server_export.json"
 	var err = server.start(8085)
 	if err != OK:
 		printerr("Server failed to start: ", err)
@@ -91,8 +92,9 @@ func _init() -> void:
 	assert(resp_chunk.begins_with("HTTP/1.1 200 OK"), "Expected 200 OK for index.html")
 	client.disconnect_from_host()
 	print("GET / static serving passed!")
-
 	server.stop()
+	DirAccess.remove_absolute("res://data/test_server_export.json")
+	print("[OSM Importer] Server stopped.")
 	print("\n========================================")
 	print("ALL HTTP SERVER TESTS PASSED!")
 	print("========================================")

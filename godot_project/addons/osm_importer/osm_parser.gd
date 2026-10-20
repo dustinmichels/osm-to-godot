@@ -72,10 +72,10 @@ func parse_data(data: Dictionary) -> Dictionary:
 			var is_multipolygon = tags.get("type") == "multipolygon"
 			var is_building = tags.has("building")
 			if is_multipolygon and is_building:
-				var b_feat = _parse_building_relation(el, node_coords)
-				if b_feat != null:
+				var b_feats = _parse_building_relation(el, node_coords)
+				for b_feat in b_feats:
 					buildings.append(b_feat)
-					# Mark member ways so we don't duplicate them in Pass 2
+				# Mark member ways so we don't duplicate them in Pass 2
 					for m in el.get("members", []):
 						if typeof(m) == TYPE_DICTIONARY and m.get("type") == "way":
 							var ref = m.get("ref")
@@ -106,16 +106,20 @@ func parse_data(data: Dictionary) -> Dictionary:
 			# Check standalone buildings (not already handled as part of a multipolygon)
 			elif tags.has("building") and not building_ways_in_relations.has(way_id):
 				var raw_pts = _extract_way_points_3d(el, node_coords)
-				var clean_ring = sanitize_polygon(raw_pts)
+				var clean_ring = sanitize_polygon(raw_pts, DUPLICATE_VERTEX_TOLERANCE, way_id)
 				if clean_ring.size() >= 4: # Minimum closed triangle: 3 unique pts + 1 closing pt
-					clean_ring = ensure_winding(clean_ring, true) # Exterior ring must be CCW
-					buildings.append({
-						"id": way_id,
-						"tags": tags,
-						"outer_rings": [clean_ring],
-						"inner_rings": []
-					})
-
+					if is_polygon_self_intersecting(clean_ring):
+						push_warning("OSMParser: Building way #" + str(way_id) + " has self-intersecting boundary; skipping.")
+					else:
+						clean_ring = ensure_winding(clean_ring, true) # Exterior ring must be CCW
+						buildings.append({
+							"id": way_id,
+							"tags": tags,
+							"outer_rings": [clean_ring],
+							"inner_rings": []
+						})
+				elif not raw_pts.is_empty():
+					push_warning("OSMParser: Building way #" + str(way_id) + " has insufficient vertices or unclosed geometry; skipping.")
 	return {
 		"metadata": metadata,
 		"projection_origin": {
@@ -206,8 +210,8 @@ func _extract_way_points_3d(way: Dictionary, node_coords: Dictionary) -> PackedV
 				
 	return pts
 
-## Parse a multipolygon building relation
-func _parse_building_relation(rel: Dictionary, node_coords: Dictionary) -> Variant:
+## Parse a multipolygon building relation into an array of building features (one per outer ring)
+func _parse_building_relation(rel: Dictionary, node_coords: Dictionary) -> Array:
 	var rel_id = rel.get("id")
 	var tags: Dictionary = rel.get("tags", {})
 	var members: Array = rel.get("members", [])
@@ -228,8 +232,7 @@ func _parse_building_relation(rel: Dictionary, node_coords: Dictionary) -> Varia
 			inner_segments.append(seg)
 			
 	if outer_segments.is_empty():
-		return null
-		
+		return []
 	var outer_rings = stitch_rings(outer_segments)
 	var inner_rings = stitch_rings(inner_segments)
 	
@@ -241,22 +244,43 @@ func _parse_building_relation(rel: Dictionary, node_coords: Dictionary) -> Varia
 			clean_outer_rings.append(clean)
 			
 	if clean_outer_rings.is_empty():
-		return null
-		
+		return []
 	var clean_inner_rings: Array[PackedVector3Array] = []
 	for r in inner_rings:
 		var clean = sanitize_polygon(r)
 		if clean.size() >= 4:
 			clean = ensure_winding(clean, false) # CW for interior holes
 			clean_inner_rings.append(clean)
+	# Pair inner rings (holes) to their containing outer ring
+	var result_buildings: Array = []
+	for outer_idx in range(clean_outer_rings.size()):
+		var outer_ring = clean_outer_rings[outer_idx]
+		var matched_inners: Array[PackedVector3Array] = []
+		
+		# Convert outer ring to 2D polygon for point-in-polygon containment test
+		var outer_2d = PackedVector2Array()
+		outer_2d.resize(outer_ring.size())
+		for k in range(outer_ring.size()):
+			outer_2d[k] = Vector2(outer_ring[k].x, outer_ring[k].z)
 			
-	return {
-		"id": rel_id,
-		"tags": tags,
-		"outer_rings": clean_outer_rings,
-		"inner_rings": clean_inner_rings
-	}
-
+		for inner_ring in clean_inner_rings:
+			if inner_ring.size() > 0:
+				var test_pt = Vector2(inner_ring[0].x, inner_ring[0].z)
+				if Geometry2D.is_point_in_polygon(test_pt, outer_2d):
+					matched_inners.append(inner_ring)
+					
+		var b_id = rel_id
+		if clean_outer_rings.size() > 1:
+			b_id = str(rel_id) + "_" + str(outer_idx)
+			
+		result_buildings.append({
+			"id": b_id,
+			"tags": tags,
+			"outer_rings": [outer_ring],
+			"inner_rings": matched_inners
+		})
+		
+	return result_buildings
 ## Deduplicate consecutive vertices in a polyline
 func sanitize_polyline(points: PackedVector3Array, tolerance: float = DUPLICATE_VERTEX_TOLERANCE) -> PackedVector3Array:
 	if points.size() < 2:
@@ -274,20 +298,27 @@ func sanitize_polyline(points: PackedVector3Array, tolerance: float = DUPLICATE_
 			
 	return result
 
-## Sanitize polygon: deduplicate adjacent vertices and enforce ring closure
-func sanitize_polygon(points: PackedVector3Array, tolerance: float = DUPLICATE_VERTEX_TOLERANCE) -> PackedVector3Array:
+## Sanitize polygon: deduplicate adjacent vertices and enforce/auto-repair ring closure
+func sanitize_polygon(points: PackedVector3Array, tolerance: float = DUPLICATE_VERTEX_TOLERANCE, way_id: Variant = null) -> PackedVector3Array:
 	if points.size() < 3:
+		if way_id != null:
+			push_warning("OSMParser: Building way #" + str(way_id) + " has fewer than 3 vertices (" + str(points.size()) + "); skipping.")
 		return PackedVector3Array()
 		
 	var cleaned = sanitize_polyline(points, tolerance)
 	if cleaned.size() < 3:
+		if way_id != null:
+			push_warning("OSMParser: Building way #" + str(way_id) + " has fewer than 3 unique vertices; skipping.")
 		return PackedVector3Array()
 		
 	# Check if first and last are already closed
 	var first = cleaned[0]
 	var last = cleaned[cleaned.size() - 1]
 	if first.distance_squared_to(last) >= (tolerance * tolerance):
-		cleaned.append(first) # Close the loop
+		# Auto-repair unclosed building way by appending first vertex
+		if way_id != null:
+			push_warning("OSMParser: Building way #" + str(way_id) + " is unclosed; auto-repairing by closing endpoint to start.")
+		cleaned.append(first)
 		
 	# Minimum valid closed polygon ring has 3 unique vertices + 1 duplicate closure = 4 vertices
 	if cleaned.size() < 4:
@@ -295,6 +326,32 @@ func sanitize_polygon(points: PackedVector3Array, tolerance: float = DUPLICATE_V
 		
 	return cleaned
 
+## Detect whether a closed 3D polygon ring self-intersects in 2D (XZ plane)
+func is_polygon_self_intersecting(ring: PackedVector3Array) -> bool:
+	var n = ring.size()
+	if n < 4:
+		return false
+	
+	# Number of segments in closed ring is n - 1
+	var num_segs = n - 1
+	for i in range(num_segs):
+		var a1 = Vector2(ring[i].x, ring[i].z)
+		var a2 = Vector2(ring[i + 1].x, ring[i + 1].z)
+		
+		# Check against non-adjacent segments
+		for j in range(i + 2, num_segs):
+			# Skip the first and last segments sharing the closed loop vertex (0 and n-2)
+			if i == 0 and j == num_segs - 1:
+				continue
+				
+			var b1 = Vector2(ring[j].x, ring[j].z)
+			var b2 = Vector2(ring[j + 1].x, ring[j + 1].z)
+			
+			var isect = Geometry2D.segment_intersects_segment(a1, a2, b1, b2)
+			if isect != null:
+				return true
+				
+	return false
 ## Calculates 2D signed area on local tangent plane (East = +X, North = -Z)
 ## Positive = Counter-Clockwise (CCW), Negative = Clockwise (CW)
 func calculate_signed_area_2d(ring: PackedVector3Array) -> float:
