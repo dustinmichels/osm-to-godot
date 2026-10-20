@@ -12,6 +12,8 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@duckdb/duckdb-wasm": "^1.33.1-dev57.0",
+    "apache-arrow": "^21.2.0",
     "clipper-lib": "^6.4.2",
     "maplibre-gl": "^6.15.0",
     "vue": "^3.5.44"

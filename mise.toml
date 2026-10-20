@@ -30,9 +30,8 @@ raw = true
 run = "./scripts/convert-geojson.sh"
 
 [tasks.fetch-overture]
-description = "Fetch Overture Maps buildings, roads, and POIs as GeoJSON for a bounding box"
+description = "[LEGACY] Fetch Overture Maps buildings, roads, and POIs as GeoJSON for a bounding box"
 run = "python3 scripts/fetch_overture.py"
-
 [tasks.clear-scene]
 alias = ["clear-city-viewer"]
 description = "Clear existing city_viewer scene to an empty base scene"

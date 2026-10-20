@@ -389,11 +389,9 @@ static func check_editor_payload_version(payload: Dictionary) -> Dictionary:
 
 
 func _handle_post(peer: StreamPeerTCP, path: String, body_bytes: PackedByteArray) -> void:
-	if path != "/api/import" and path != "/api/fetch":
+	if path != "/api/import":
 		_send_error(peer, 404, "Not Found")
 		return
-	var is_fetch_only = path == "/api/fetch"
-
 	var body_str = body_bytes.get_string_from_utf8()
 	var json = JSON.new()
 	var err = json.parse(body_str)
@@ -416,116 +414,6 @@ func _handle_post(peer: StreamPeerTCP, path: String, body_bytes: PackedByteArray
 	var dir = DirAccess.open("res://")
 	if dir and not dir.dir_exists(dir_path.trim_prefix("res://")):
 		dir.make_dir_recursive(dir_path.trim_prefix("res://"))
-	var fetch_output: Array = []
-
-	# Check if payload is a bounding box query requesting Overture fetch
-	if payload.has("bbox") or (payload.has("west") and payload.has("south")):
-		var bbox_str = ""
-		if payload.has("bbox"):
-			var b = payload["bbox"]
-			if typeof(b) == TYPE_ARRAY and b.size() == 4:
-				bbox_str = "%f,%f,%f,%f" % [float(b[0]), float(b[1]), float(b[2]), float(b[3])]
-			elif typeof(b) == TYPE_STRING:
-				bbox_str = b
-		elif payload.has("west") and payload.has("south"):
-			bbox_str = (
-				"%f,%f,%f,%f"
-				% [
-					float(payload["west"]),
-					float(payload["south"]),
-					float(payload["east"]),
-					float(payload["north"])
-				]
-			)
-
-		if not bbox_str.is_empty():
-			var is_medford_y = false
-			var coords = bbox_str.split(",")
-			if coords.size() == 4:
-				var w = float(coords[0])
-				var s = float(coords[1])
-				var e = float(coords[2])
-				var n = float(coords[3])
-				if (
-					absf(w - -71.111885) < 0.001
-					and absf(s - 42.414131) < 0.001
-					and absf(e - -71.108851) < 0.001
-					and absf(n - 42.416392) < 0.001
-				):
-					is_medford_y = true
-
-			var loaded_cached = false
-			if is_medford_y:
-				var cached_path = "res://data/medford_y_overture.geojson"
-				if not FileAccess.file_exists(cached_path):
-					cached_path = "../tests/fixtures/medford_y_overture.geojson"
-				if FileAccess.file_exists(cached_path):
-					var f_cache = FileAccess.open(cached_path, FileAccess.READ)
-					if f_cache:
-						body_str = f_cache.get_as_text()
-						f_cache.close()
-						if json.parse(body_str) == OK and typeof(json.data) == TYPE_DICTIONARY:
-							payload = json.data
-							loaded_cached = true
-							print(
-								"[OSM Importer] Using cached Medford-Y Overture preset from: ",
-								cached_path
-							)
-
-			if not loaded_cached:
-				var out_geojson = ProjectSettings.globalize_path(
-					"res://data/overture_export.geojson"
-				)
-				var script_path = ProjectSettings.globalize_path(
-					"res://../scripts/fetch_overture.py"
-				)
-				print(
-					"[OSM Importer] Fetching Overture data via script: ",
-					script_path,
-					" --bbox=",
-					bbox_str
-				)
-				var exit_code = OS.execute(
-					"python3",
-					[script_path, "--bbox", bbox_str, "--output", out_geojson],
-					fetch_output,
-					true
-				)
-				if FileAccess.file_exists("res://data/overture_export.geojson"):
-					var f_geo = FileAccess.open(
-						"res://data/overture_export.geojson", FileAccess.READ
-					)
-					if f_geo:
-						var content = f_geo.get_as_text()
-						f_geo.close()
-						if json.parse(content) == OK and typeof(json.data) == TYPE_DICTIONARY:
-							body_str = content
-							payload = json.data
-				elif is_medford_y:
-					var cached_path = "res://data/medford_y_overture.geojson"
-					if not FileAccess.file_exists(cached_path):
-						cached_path = "../tests/fixtures/medford_y_overture.geojson"
-					if FileAccess.file_exists(cached_path):
-						var f_cache = FileAccess.open(cached_path, FileAccess.READ)
-						if f_cache:
-							body_str = f_cache.get_as_text()
-							f_cache.close()
-							if json.parse(body_str) == OK and typeof(json.data) == TYPE_DICTIONARY:
-								payload = json.data
-								print(
-									"[OSM Importer] Fallback to cached Medford-Y Overture preset."
-								)
-
-	if is_fetch_only and not (payload.get("type") in ["FeatureCollection", "Feature"]):
-		var err_msg = "Failed to acquire Overture GeoJSON for requested bounding box."
-		if fetch_output.size() > 0:
-			err_msg += " Details: " + " ".join(fetch_output)
-		push_error("[OSM Importer] " + err_msg)
-		_send_json_response(
-			peer, 500, "Internal Server Error", {"success": false, "error": err_msg}
-		)
-		return
-
 	var is_geojson = payload.get("type") in ["FeatureCollection", "Feature"]
 	var editor_check = check_editor_payload_version(payload)
 	if editor_check["is_editor"] and not editor_check["valid"]:
@@ -601,34 +489,6 @@ func _handle_post(peer: StreamPeerTCP, path: String, body_bytes: PackedByteArray
 		actual_source_type,
 		")"
 	)
-	if is_fetch_only:
-		var fetch_warnings: Array = []
-		if payload.has("metadata") and typeof(payload["metadata"]) == TYPE_DICTIONARY:
-			var meta: Dictionary = payload["metadata"]
-			if (
-				meta.has("failed_themes")
-				and typeof(meta["failed_themes"]) == TYPE_ARRAY
-				and meta["failed_themes"].size() > 0
-			):
-				fetch_warnings.append(
-					"Partial download failure for themes: " + ", ".join(meta["failed_themes"])
-				)
-		_send_json_response(
-			peer,
-			200,
-			"OK",
-			{
-				"success": true,
-				"saved_path": effective_save_path,
-				"format": "geojson" if is_geojson else "osm",
-				"geojson": payload if is_geojson else null,
-				"warnings": fetch_warnings,
-				"stats":
-				{"roads": roads_count, "buildings": buildings_count, "elements": elements_count}
-			}
-		)
-		return
-
 	_send_json_response(
 		peer,
 		200,

@@ -12,5 +12,12 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true
-  }
+  },
+  worker: {
+    format: 'es'
+  },
+  optimizeDeps: {
+    exclude: ['@duckdb/duckdb-wasm']
+  },
+  assetsInclude: ['**/*.wasm']
 })

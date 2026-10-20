@@ -5,8 +5,6 @@ import {
   getOvertureCacheKey,
   parseOvertureData,
   useOverture,
-  createOvertureCommandFile,
-  isOvertureCommandFile,
   analyzeOvertureThemes
 } from './useOverture'
 describe('useOverture caching', () => {
@@ -106,25 +104,6 @@ describe('parseOvertureData and file-drop handling', () => {
     expect(res.payload?.type).toBe('FeatureCollection')
   })
 
-  it('creates and rejects bounding-box command files as map data', () => {
-    const box = {
-      west: -71.111885,
-      south: 42.414131,
-      east: -71.108851,
-      north: 42.416392
-    }
-    const commandFile = createOvertureCommandFile(box)
-    expect(commandFile.type).toBe('command_file')
-    expect(commandFile.metadata.command).toContain('mise run fetch-overture')
-    expect(commandFile.metadata.bbox).toEqual([-71.111885, 42.414131, -71.108851, 42.416392])
-    expect(isOvertureCommandFile(commandFile)).toBe(true)
-
-    const res = parseOvertureData(JSON.stringify(commandFile))
-    expect(res.success).toBe(false)
-    expect(res.isCommandFile).toBe(true)
-    expect(res.error).toContain('command file')
-    expect(res.error).toContain('NOT downloaded map data')
-  })
 
   it('rejects invalid JSON string', () => {
     const res = parseOvertureData('{ broken json')
@@ -203,14 +182,13 @@ describe('parseOvertureData and file-drop handling', () => {
     expect(lastExportPayload.value?.features.length).toBe(1)
     expect(errorMessage.value).toBeNull()
 
-    // Now try invalid command file
-    const cmd = {
-      note: 'command file',
-      metadata: { command: 'fetch' }
+    // Now try invalid non-GeoJSON file
+    const badData = {
+      foo: 'bar'
     }
-    const badResult = loadOvertureFileContent(JSON.stringify(cmd))
+    const badResult = loadOvertureFileContent(JSON.stringify(badData))
     expect(badResult).toBeNull()
-    expect(errorMessage.value).toContain('command file')
+    expect(errorMessage.value).toContain('Unrecognized format')
   })
 })
 

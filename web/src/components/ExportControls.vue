@@ -3,10 +3,9 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useBBox } from '@/composables/useBBox'
 import { useOverpass, PRESET_CACHES, matchesBBox } from '@/composables/useOverpass'
 import {
-  useOverture,
-  isOvertureCommandFile,
-  downloadOvertureCommandFile
+  useOverture
 } from '@/composables/useOverture'
+import { useOvertureWasm } from '@/composables/useOvertureWasm'
 import { useGodotBridge } from '@/composables/useGodotBridge'
 import { useWorkspace } from '@/composables/useWorkspace'
 import { useEditorModel } from '@/composables/useEditorModel'
@@ -35,9 +34,23 @@ const {
   fetchFromBridge: fetchOvertureFromBridge
 } = useOverture()
 
-const isLoading = computed(() => (dataSource.value === 'osm' ? isOsmLoading.value : isOvertureLoading.value))
-const statusMessage = computed(() => (dataSource.value === 'osm' ? osmStatusMessage.value : overtureStatusMessage.value))
-const errorMessage = computed(() => (dataSource.value === 'osm' ? osmErrorMessage.value : overtureErrorMessage.value))
+const {
+  isLoading: isWasmLoading,
+  error: wasmError,
+  progress: wasmProgress,
+  acquire: acquireOvertureWasm
+} = useOvertureWasm()
+
+const isLoading = computed(() => (dataSource.value === 'osm' ? isOsmLoading.value : (isOvertureLoading.value || isWasmLoading.value)))
+const statusMessage = computed(() => {
+  if (dataSource.value === 'osm') return osmStatusMessage.value
+  if (isWasmLoading.value && wasmProgress.value.message) return wasmProgress.value.message
+  return overtureStatusMessage.value
+})
+const errorMessage = computed(() => {
+  if (dataSource.value === 'osm') return osmErrorMessage.value
+  return wasmError.value || overtureErrorMessage.value
+})
 const {
   isConnected,
   godotPort,
@@ -75,14 +88,9 @@ const dataSource = ref<'overture' | 'osm'>('overture')
 const isDraggingFile = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
-const isStandaloneOvertureWithoutService = computed(() => {
-  if (dataSource.value !== 'overture') return false
-  if (isConnected.value) return false
-  const box = normalizedBBox.value
-  if (!box) return false
-  if (lastOverturePayload.value) return false
-  if (getCachedOverturePreset(box)) return false
-  return true
+const acquireButtonLabel = computed(() => {
+  if (isLoading.value) return 'Acquiring Data...'
+  return dataSource.value === 'overture' ? 'Acquire Overture (DuckDB)' : 'Acquire OSM (Overpass)'
 })
 
 const downloadButtonLabel = computed(() => {
@@ -93,7 +101,7 @@ const downloadButtonLabel = computed(() => {
   if (isConnected.value) {
     return 'Fetch & Download GeoJSON'
   }
-  return 'Download CLI Fetch Command (Not Map Data)'
+  return 'Download Raw GeoJSON'
 })
 
 const downloadButtonTitle = computed(() => {
@@ -104,7 +112,7 @@ const downloadButtonTitle = computed(() => {
   if (isConnected.value) {
     return 'Fetch Overture GeoJSON via bridge and download to disk'
   }
-  return 'Download CLI command file for terminal acquisition. Note: This is a command script, NOT downloaded map data.'
+  return 'Download raw, unedited Overture GeoJSON payload'
 })
 
 watch(
@@ -170,14 +178,10 @@ async function acquireData(): Promise<boolean> {
 
   setImportProgress('Fetching source data...', 20)
   if (dataSource.value === 'overture') {
+    // 1. First check bundled offline presets (e.g. medford-y) or existing cached payload for zero-network testing
     let payload = lastOverturePayload.value
     if (!payload) {
       payload = await executeOvertureExport()
-    }
-    // If not in bundled preset or browser cache, and Godot bridge is connected, reuse fetch-only bridge operation
-    if (!payload && isConnected.value) {
-      setImportProgress('Fetching Overture GeoJSON via bridge...', 40)
-      payload = await fetchOvertureFromBridge(box, fetchGeoJsonFromGodot)
     }
 
     if (payload) {
@@ -200,13 +204,54 @@ async function acquireData(): Promise<boolean> {
       return true
     }
 
+    // 2. Client-side DuckDB-WASM ingestion for non-preset areas
+    setImportProgress('Acquiring Overture via DuckDB-WASM...', 30)
+    const wasmResult = await acquireOvertureWasm(box)
+    if (wasmResult) {
+      lastOverturePayload.value = wasmResult.rawPayload as unknown as ReturnType<typeof useOverture>['lastExportPayload']['value']
+      const ok = setProject(wasmResult.project, { useWorker: true })
+      setImportProgress(null)
+      if (!ok) {
+        const errDetail = lastImportError.value ? `: ${lastImportError.value}` : ''
+        const adviceDetail = actionableImportAdvice.value ? ` (${actionableImportAdvice.value})` : ''
+        overtureErrorMessage.value = `Failed to load project${errDetail}${adviceDetail} Last valid project retained.`
+        return false
+      }
+      setWorkspace('editor')
+      return true
+    }
+
+    // 3. Fallback: if Godot bridge connected, check if bridge can fetch
+    if (isConnected.value) {
+      setImportProgress('Fetching Overture GeoJSON via bridge...', 40)
+      payload = await fetchOvertureFromBridge(box, fetchGeoJsonFromGodot)
+      if (payload) {
+        setImportProgress('Normalizing Overture features...', 70)
+        const workerBridge = getEditorWorkerBridge()
+        const project = await workerBridge.normalizePayload('overture', payload, {
+          source: 'overture',
+          bbox: [box.west, box.south, box.east, box.north]
+        })
+        setImportProgress('Validating and loading project...', 90)
+        const ok = setProject(project, { useWorker: true })
+        setImportProgress(null)
+        if (!ok) {
+          const errDetail = lastImportError.value ? `: ${lastImportError.value}` : ''
+          const adviceDetail = actionableImportAdvice.value ? ` (${actionableImportAdvice.value})` : ''
+          overtureErrorMessage.value = `Failed to load project${errDetail}${adviceDetail} Last valid project retained.`
+          return false
+        }
+        setWorkspace('editor')
+        return true
+      }
+    }
+
     setImportProgress(null)
-    if (isConnected.value && !payload) {
+    if (!overtureErrorMessage.value && wasmError.value) {
+      overtureErrorMessage.value = wasmError.value
+    } else if (!overtureErrorMessage.value) {
       overtureErrorMessage.value =
-        lastTransferError.value || overtureErrorMessage.value || 'Failed to acquire Overture data via Godot bridge.'
-    } else if (!isConnected.value) {
-      overtureErrorMessage.value =
-        'No cached Overture preset for this area. Open or drop a downloaded Overture GeoJSON file below, or launch Godot with the OSM/Overture importer plugin.'
+        'Failed to acquire Overture data via DuckDB-WASM. Open or drop a GeoJSON or Project JSON file below.'
     }
     return false
   }
@@ -256,12 +301,8 @@ async function executeDownload() {
       return
     }
 
-    // Standalone browser with no acquisition service:
-    // Clearly offer file import instructions and download a bounding box query file with the exact CLI command.
-    // Explicitly do not pretend this is map data.
-    downloadOvertureCommandFile(box)
-    overtureStatusMessage.value =
-      'Downloaded CLI fetch command file. Note: This is a command script, NOT downloaded map data. Run it in terminal, then import the resulting GeoJSON file.'
+    overtureErrorMessage.value =
+      'No Overture GeoJSON available to download for this area. Acquire data or import a GeoJSON file first.'
     return
   }
 
@@ -314,15 +355,6 @@ async function processUploadedFile(file: File) {
       throw new Error('File does not contain a valid JSON object.')
     }
 
-    // Detect if this is a command file rather than actual map data
-    if (isOvertureCommandFile(json)) {
-      setImportProgress(null)
-      const msg =
-        'The selected file is a bounding-box command file, NOT downloaded map data. Run the command inside it in your terminal to fetch GeoJSON, then import the resulting GeoJSON file.'
-      if (dataSource.value === 'overture') overtureErrorMessage.value = msg
-      else osmErrorMessage.value = msg
-      return
-    }
     if (json && typeof json === 'object' && ('schemaVersion' in json || 'schema_version' in json)) {
       setImportProgress('Validating Project Envelope...', 85)
       const valResult = validateImportPayload(json)
@@ -428,8 +460,8 @@ async function processUploadedFile(file: File) {
         <p class="card-sub">Fetch source data and open 2D editor</p>
       </div>
       <div class="godot-badge" :class="{ 'is-connected': isConnected }">
-        <span class="badge-dot" />
-        <span>{{ isConnected ? `Godot :${godotPort}` : 'Godot Offline' }}</span>
+        <span class="badge-dot">{{ isConnected ? '●' : '○' }}</span>
+        <span>{{ isConnected ? `Godot :${godotPort} (Linked)` : 'Godot (Offline)' }}</span>
       </div>
     </div>
 
@@ -465,43 +497,8 @@ async function processUploadedFile(file: File) {
       </label>
     </div>
     <!-- Action Buttons -->
-    <!-- Standalone browser guidance notice -->
-    <div v-if="isStandaloneOvertureWithoutService" class="standalone-guidance-card">
-      <div class="guidance-header">
-        <span class="guidance-badge">Standalone Browser</span>
-        <span class="guidance-title">No Local Acquisition Service</span>
-      </div>
-      <p class="guidance-text">
-        Live Overture acquisition requires a local bridge service (Godot). To edit this area without Godot, <strong>import an Overture GeoJSON file</strong> directly, or run the CLI fetch command in your terminal.
-      </p>
-      <button
-        type="button"
-        class="guidance-import-btn"
-        @click="onTriggerFileInput"
-      >
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" class="btn-icon">
-          <path d="M4 16v1a2 2 0 002 2h8a2 2 0 002-2v-1M7 9l3-3m0 0l3 3m-3-3v9" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-        <span>Choose Overture GeoJSON File</span>
-      </button>
-    </div>
-
-    <!-- Action Buttons -->
     <div class="actions-row">
       <button
-        v-if="isStandaloneOvertureWithoutService"
-        type="button"
-        class="primary-acquire-btn import-accent"
-        @click="onTriggerFileInput"
-      >
-        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" class="btn-icon">
-          <path d="M4 16v1a2 2 0 002 2h8a2 2 0 002-2v-1M7 9l3-3m0 0l3 3m-3-3v9" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-        </svg>
-        <span>Import Overture GeoJSON...</span>
-      </button>
-
-      <button
-        v-else
         type="button"
         class="primary-acquire-btn"
         :class="{ 'is-loading': isLoading }"
@@ -512,7 +509,7 @@ async function processUploadedFile(file: File) {
         <svg v-else viewBox="0 0 20 20" fill="none" stroke="currentColor" class="btn-icon">
           <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
-        <span>{{ isLoading ? 'Acquiring Data...' : 'Acquire & Open in Editor' }}</span>
+        <span>{{ acquireButtonLabel }}</span>
       </button>
 
       <button
@@ -541,7 +538,7 @@ async function processUploadedFile(file: File) {
     <!-- File Open / Drop Zone (No Godot instance required) -->
     <div
       class="file-drop-zone"
-      :class="{ 'is-dragging': isDraggingFile, 'is-highlighted': isStandaloneOvertureWithoutService }"
+      :class="{ 'is-dragging': isDraggingFile }"
       @dragover.prevent="isDraggingFile = true"
       @dragleave.prevent="isDraggingFile = false"
       @drop.prevent="handleFileDrop"
@@ -551,7 +548,7 @@ async function processUploadedFile(file: File) {
         <path d="M4 16v1a2 2 0 002 2h8a2 2 0 002-2v-1M7 9l3-3m0 0l3 3m-3-3v9" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
       </svg>
       <div class="drop-zone-content">
-        <span class="drop-zone-primary">Open or Drop Overture GeoJSON</span>
+        <span class="drop-zone-primary">Open or Drop GeoJSON / Project</span>
         <span class="drop-zone-secondary">(.geojson, .json) — no running Godot required</span>
       </div>
     </div>
@@ -985,88 +982,6 @@ async function processUploadedFile(file: File) {
   gap: 8px;
   margin-bottom: 10px;
 }
-.standalone-guidance-card {
-  background: rgba(30, 41, 59, 0.7);
-  border: 1px solid rgba(56, 189, 248, 0.3);
-  border-radius: 8px;
-  padding: 10px 12px;
-  margin-bottom: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.guidance-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.guidance-badge {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  background: rgba(56, 189, 248, 0.2);
-  color: #38bdf8;
-  padding: 2px 6px;
-  border-radius: 4px;
-  letter-spacing: 0.05em;
-}
-
-.guidance-title {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: #f1f5f9;
-}
-
-.guidance-text {
-  margin: 0;
-  font-size: 11px;
-  line-height: 1.4;
-  color: #94a3b8;
-}
-
-.guidance-text strong {
-  color: #e2e8f0;
-}
-
-.guidance-import-btn {
-  margin-top: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  background: rgba(56, 189, 248, 0.15);
-  color: #38bdf8;
-  border: 1px solid rgba(56, 189, 248, 0.4);
-  border-radius: 6px;
-  padding: 6px 10px;
-  font-size: 11.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.guidance-import-btn:hover {
-  background: rgba(56, 189, 248, 0.25);
-  color: #ffffff;
-}
-
-.primary-acquire-btn.import-accent {
-  background: #0284c7;
-  border-color: #38bdf8;
-}
-
-.primary-acquire-btn.import-accent:hover {
-  filter: brightness(1.15);
-}
-
-.file-drop-zone.is-highlighted {
-  border-color: #38bdf8;
-  background: rgba(56, 189, 248, 0.05);
-  box-shadow: 0 0 10px rgba(56, 189, 248, 0.15);
-}
-
 .export-inclusions-card {
   background: rgba(15, 23, 42, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.08);

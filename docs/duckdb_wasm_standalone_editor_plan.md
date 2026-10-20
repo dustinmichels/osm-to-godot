@@ -1,11 +1,14 @@
-# DuckDB-WASM & Standalone 2D Editor: Architectural Plan
+# DuckDB-WASM & Standalone 2D Editor Architecture
 
-## 1. Executive Summary
+Architecture specification for evolving the web application into an autonomous, browser-native 2D Urban Geometry Studio using client-side DuckDB-WASM for Overture Maps GeoParquet ingestion, with Godot 4 as an optional downstream consumer.
 
-This plan addresses two core architectural goals:
+---
 
-1. **In-Browser DuckDB-WASM Ingestion:** Replace host-dependent Python scripts (`scripts/fetch_overture.py`, `uvx overturemaps`) with client-side DuckDB-WASM (`@duckdb/duckdb-wasm`). Query Overture Maps GeoParquet directly from public S3 buckets via HTTP range requests (`httpfs` + `spatial`).
-2. **Standalone 2D Editor Decoupling:** Establish the 2D street and map editor as a self-sufficient web application. Godot becomes an optional downstream consumer (via `/api/import`), not a mandatory execution host or server dependency.
+## 1. System Vision
+
+- **Client-Side DuckDB-WASM Ingestion**: Execute spatial SQL queries directly within a Web Worker via `@duckdb/duckdb-wasm`. Queries read Overture Maps GeoParquet on Amazon S3 via HTTP range requests (`httpfs` + `spatial`), downloading only row groups matching the selected bounding box via Parquet metadata predicate pushdown.
+- **Autonomous 2D Editor**: A standalone web GIS tool for selecting areas, editing road cross-sections, lane layouts, and building footprints, and saving/exporting results (`ProjectEnvelope` JSON and derived surface GeoJSON).
+- **Decoupled Downstream Bridge**: Godot 4 is an optional procedural 3D viewer consuming derived surfaces via `POST 127.0.0.1:8080/api/import` or file drag-and-drop. Godot is not required for data acquisition or 2D editing.
 
 ---
 
@@ -13,136 +16,208 @@ This plan addresses two core architectural goals:
 
 ```mermaid
 flowchart TD
-    subgraph DataSources ["External Data Sources"]
-        Overpass["OSM Overpass API<br/>(HTTPS JSON)"]
-        OvertureS3["Overture Maps S3<br/>(Remote GeoParquet)"]
+    subgraph ExternalSources ["Remote Open Data Sources"]
+        OvertureS3["Overture Maps S3 Bucket<br/>(GeoParquet partitioned by theme/type)"]
+        OverpassAPI["OpenStreetMap Overpass API<br/>(HTTPS JSON fallback)"]
     end
 
-    subgraph Client ["Client Browser: Standalone 2D Editor (web/)"]
-        subgraph Ingestion ["Ingestion Subsystem"]
-            OverpassClient["Overpass Service<br/>(HTTP fetch)"]
-            DuckDBWorker["DuckDB-WASM Worker<br/>(httpfs + spatial)"]
-            FileImport["Local File Drop / Open<br/>(GeoJSON, Scenario JSON)"]
+    subgraph Browser ["Standalone Browser Application (web/)"]
+        subgraph IngestionLayer ["Ingestion Subsystem"]
+            DuckDBWorker["DuckDB-WASM Worker<br/>• httpfs + spatial extensions<br/>• S3 HTTP Range Requests<br/>• Bbox Predicate Pushdown<br/>• Arrow RecordBatch Stream"]
+            OverpassClient["Overpass Service (OSM JSON)"]
+            FileDrop["Local File Loader (GeoJSON, Project JSON)"]
+            IDBCache["IndexedDB Spatial Cache"]
         end
 
-        subgraph Core2D ["2D Editor Core (Independent)"]
-            Model["useEditorModel<br/>(Cross-sections, ribbons, junctions)"]
-            MapView["MapLibre GL Canvas<br/>(Data & Realistic Views)"]
-            Inspector["Feature & Profile Inspector"]
+        subgraph CoreModel ["2D Editor State & Geometry Engine"]
+            EditorModel["useEditorModel<br/>• ProjectEnvelope State (v1.0.0)<br/>• Undo / Redo History<br/>• Selection & Tool State"]
+            EditorWorker["editorWorker (Clipper Lib)<br/>• Centerline Normalization<br/>• Parametric Ribbon Generation<br/>• Junction Clipping & Curb Topology<br/>• Derived Surface Generation"]
         end
 
-        subgraph Export ["Export & Transport Adapters"]
-            FileExport["Local File Exporters<br/>(GeoJSON, Scenario, SVG)"]
-            GodotBridge["Optional Godot Bridge<br/>(POST 127.0.0.1:8080/api/import)"]
+        subgraph UI ["Interactive UI Layer"]
+            MapView["MapLibre GL Canvas<br/>• Data View (Centerlines, Bbox)<br/>• Realistic View (Derived Surfaces)"]
+            Toolbar["EditorToolbar (Profiles, Tools)"]
+            Inspector["FeatureInspector (Lanes, Heights, Tags)"]
+        end
+
+        subgraph ExportHub ["Export & Bridge Subsystem"]
+            SaveProject["Save Project JSON (ProjectEnvelope)"]
+            ExportGeoJSON["Export Scene GeoJSON (Derived Surfaces)"]
+            GodotBridge["Optional Godot 3D Bridge (POST /api/import)"]
         end
     end
 
     subgraph Downstream ["Downstream Consumers"]
-        Godot3D["Godot 4 Engine / 3D Viewer<br/>(Procedural Mesh Generation)"]
-        ExternalGIS["External Tools<br/>(QGIS, Blender-GIS, Web)"]
+        GodotEngine["Godot 4 3D Engine<br/>• Procedural Mesh Extrusion<br/>• WASD Character Navigation"]
+        ExternalGIS["External Tools (QGIS, Blender GIS)"]
     end
 
-    Overpass --> OverpassClient --> Model
-    OvertureS3 -->|"HTTP Range Queries"| DuckDBWorker --> Model
-    FileImport --> Model
-
-    Model <--> MapView
-    Model <--> Inspector
-
-    Model --> FileExport --> ExternalGIS
-    Model --> GodotBridge -.->|"Optional Local HTTP"| Godot3D
+    OvertureS3 -->|"HTTP Range Queries (Parquet)"| DuckDBWorker
+    DuckDBWorker <--> IDBCache
+    OverpassAPI --> OverpassClient
+    FileDrop --> EditorModel
+    DuckDBWorker -->|"Normalized GeoJSON"| EditorModel
+    OverpassClient -->|"Normalized GeoJSON"| EditorModel
+    EditorModel <--> EditorWorker
+    EditorModel <--> MapView
+    EditorModel <--> Inspector
+    EditorModel <--> Toolbar
+    EditorModel --> SaveProject
+    EditorModel --> ExportGeoJSON --> ExternalGIS
+    EditorModel --> GodotBridge -.->|"Optional HTTP Stream"| GodotEngine
 ```
 
 ---
 
-## 3. Key Architectural Changes
+## 3. Lifecycle Sequence
 
-### 3.1 Eliminating the Python / Host Toolchain Dependency
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant Map as MapView / BBox
+    participant DDB as DuckDB-WASM Worker
+    participant S3 as Overture S3 (GeoParquet)
+    participant Model as useEditorModel
+    participant Geom as editorWorker (Clipper)
+    participant Godot as Godot 4 (Optional)
 
-- **Current:** Browser $\to$ Godot (`http_server.gd`) $\to$ `OS.execute("python3", ...)` $\to$ `uvx overturemaps` $\to$ S3 $\to$ host `duckdb` CLI $\to$ Godot $\to$ Browser.
-- **New:** Browser $\to$ `@duckdb/duckdb-wasm` Web Worker $\to$ Overture S3 $\to$ Browser 2D Editor.
-- **Benefits:**
-  - Eliminates Python, `uv`, and host CLI binaries from user prerequisites.
-  - Works on pure static hosting (GitHub Pages, Netlify, Vercel) without any backend server.
-  - Direct SQL control over bounding boxes, attribute projections, and feature limits.
+    User->>Map: Select Bounding Box
+    User->>Model: Click "Acquire Data (DuckDB)"
+    Model->>DDB: queryBBox(minLon, minLat, maxLon, maxLat)
+    DDB->>S3: HTTP Range Requests (Parquet Header + Row Groups)
+    S3-->>DDB: Filtered Parquet Byte Streams
+    DDB->>DDB: ST_GeomFromWKB & ST_AsGeoJSON + Attribute Projection
+    DDB-->>Model: FeatureCollection (buildings, segments, places, addresses)
+    Model->>Geom: normalizePayload(overture, features)
+    Geom-->>Model: ProjectEnvelope (features, metadata, warnings)
+    Model->>Geom: computeDerivedSurfaces(project)
+    Geom-->>Model: Derived Surfaces (carriageways, cycleways, sidewalks, junctions, buildings)
+    Model->>Map: Render 2D Realistic & Data Views
 
-### 3.2 Decoupling the 2D Editor from Godot
+    Note over User,Model: Interactive 2D Editing Cycle (Lane widths, cross-sections, tags, heights)
 
-- The editor functions as a standalone GIS workbench:
-  - Open, edit, and inspect street profiles, lane assignments, sidewalks, and building footprints.
-  - Save and load local scenarios without Godot running.
-  - Detect Godot server presence via non-blocking heartbeat (`/api/status`). If offline, "Send to Godot" is gracefully disabled or tucked into an export panel alongside "Download GeoJSON" and "Export Scenario".
+    alt Standalone Export
+        User->>Model: Click "Save Project" or "Export GeoJSON"
+        Model-->>User: Download Project JSON or Derived Scene GeoJSON
+    else Optional Godot 3D Stream
+        User->>Model: Click "Send to Godot"
+        Model->>Godot: POST /api/import (Scene GeoJSON Payload v1.0.0)
+        Godot-->>Model: HTTP 200 OK
+        Godot->>Godot: Procedural 3D Mesh Generation
+    end
+```
 
 ---
 
 ## 4. DuckDB-WASM Ingestion Design
 
-### 4.1 Remote GeoParquet Queries
+### 4.1 Remote GeoParquet Storage
 
-Overture Maps publishes partitioned GeoParquet files to Amazon S3 (`s3://overturemaps-us-west-2/release/`). DuckDB-WASM supports spatial queries over HTTP/HTTPS:
+- **S3 Bucket**: `s3://overturemaps-us-west-2/release/`
+- **HTTPS Public Base**: `https://overturemaps-us-west-2.s3.amazonaws.com/release/`
+- **Partitions**:
+  - Buildings: `theme=buildings/type=building/*`
+  - Transportation Segments: `theme=transportation/type=segment/*`
+  - Places (POIs): `theme=places/type=place/*`
+  - Addresses: `theme=addresses/type=address/*`
+
+### 4.2 Predicate Pushdown via HTTP Range Requests
+
+DuckDB-WASM's Parquet reader reads the footer and column statistics via small HTTP range requests. When filtering by `bbox.xmin`, `bbox.xmax`, `bbox.ymin`, and `bbox.ymax`:
+
+- Only matching row groups are transferred.
+- For typical city blocks (0.1 to 2.0 km²), total network transfer is **1–8 MB**.
+
+### 4.3 Web Worker Layout (`web/src/services/duckdb/`)
+
+- `duckdbWorker.ts`: Instantiates DuckDB-WASM inside a dedicated Web Worker using the non-threaded exception-handling bundle (`duckdb-eh.wasm`) to run without COOP/COEP header requirements on static hosts.
+- `duckdbWorkerBridge.ts`: Main-thread typed Promise RPC bridge (`queryOvertureBBox`).
+- `queries.ts`: Parameterized SQL statements with bounding-box pushdown.
+- `cache.ts`: IndexedDB spatial cache keyed by quantized bounding box.
+
+### 4.4 Parameterized Query Templates
 
 ```sql
+-- 1. Buildings Theme
 INSTALL spatial;
 LOAD spatial;
 
--- Query buildings within bounding box using bounding box pushdown
 SELECT
     id,
-    ST_AsGeoJSON(geometry) AS geometry_geojson,
+    ST_AsGeoJSON(geometry) AS geometry,
     height,
     num_floors,
-    names.primary AS name
-FROM read_parquet('https://overturemaps-us-west-2.s3.amazonaws.com/release/<release-tag>/theme=buildings/type=building/*', hive_partitioning=1)
-WHERE bbox.xmin >= $min_lon AND bbox.xmax <= $max_lon
-  AND bbox.ymin >= $min_lat AND bbox.ymax <= $max_lat
-LIMIT 5000;
+    level,
+    class,
+    names.primary AS name,
+    sources[1].dataset AS source_dataset
+FROM read_parquet(
+    'https://overturemaps-us-west-2.s3.amazonaws.com/release/2024-11-13.0/theme=buildings/type=building/*',
+    hive_partitioning=1
+)
+WHERE bbox.xmin <= $max_lon AND bbox.xmax >= $min_lon
+  AND bbox.ymin <= $max_lat AND bbox.ymax >= $min_lat
+LIMIT $limit_buildings;
+
+-- 2. Transportation Segments Theme
+SELECT
+    id,
+    ST_AsGeoJSON(geometry) AS geometry,
+    subtype,
+    class,
+    subclass,
+    names.primary AS name,
+    level,
+    access_restrictions,
+    speed_limits,
+    sources[1].dataset AS source_dataset
+FROM read_parquet(
+    'https://overturemaps-us-west-2.s3.amazonaws.com/release/2024-11-13.0/theme=transportation/type=segment/*',
+    hive_partitioning=1
+)
+WHERE bbox.xmin <= $max_lon AND bbox.xmax >= $min_lon
+  AND bbox.ymin <= $max_lat AND bbox.ymax >= $min_lat
+LIMIT $limit_segments;
+
+-- 3. Places (POIs) Theme
+SELECT
+    id,
+    ST_AsGeoJSON(geometry) AS geometry,
+    names.primary AS name,
+    categories.primary AS category,
+    brand.names.primary AS brand_name
+FROM read_parquet(
+    'https://overturemaps-us-west-2.s3.amazonaws.com/release/2024-11-13.0/theme=places/type=place/*',
+    hive_partitioning=1
+)
+WHERE bbox.xmin <= $max_lon AND bbox.xmax >= $min_lon
+  AND bbox.ymin <= $max_lat AND bbox.ymax >= $min_lat
+LIMIT 1000;
 ```
 
-### 4.2 Web Worker Architecture
+---
 
-- Run DuckDB-WASM inside a dedicated Web Worker to prevent UI thread lockups during Parquet downloads and spatial indexing.
-- Return streamed batches directly to the Vue composition layer (`useOvertureWasm.ts`).
-- Maintain an in-memory cache and IndexedDB storage for downloaded bounding boxes to avoid redundant S3 bandwidth.
+## 5. Technical Risks & Mitigations
+
+| Risk                           | Impact                                                      | Mitigation                                                                                                  |
+| :----------------------------- | :---------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------- |
+| **S3 CORS & Range Requests**   | S3 bucket rejects browser range headers                     | Overture's S3 bucket has public CORS enabled (`GET`, `HEAD`, `Range`). Compatible with DuckDB-WASM HTTPFS.  |
+| **WASM Memory Ceiling**        | Large bounding boxes trigger OOM in 32-bit WASM             | Enforce area limits in UI (`useBBox.ts`). Stream Arrow record batches; project only needed columns in SQL.  |
+| **Initial WASM Download Size** | DuckDB-WASM + Spatial is ~15–20 MB                          | Code-split and lazy-load the DuckDB worker chunk only upon first Overture acquisition request.              |
+| **COOP/COEP Headers**          | Multi-threaded WASM requires cross-origin isolation headers | Use non-threaded bundle (`duckdb-eh.wasm`), enabling deployment on any static host without special headers. |
+| **Overture Schema Evolution**  | Monthly release tag changes                                 | Store release tag as configurable constant with version discovery fallback.                                 |
 
 ---
 
-## 5. Implementation Phases
+## 6. Canonical Data Schemas
 
-### Phase 1: Standalone Editor Boundary & UI Separation
+| Schema                      | Producer                       | Consumer                   | Format                    |
+| :-------------------------- | :----------------------------- | :------------------------- | :------------------------ |
+| **Overture GeoParquet**     | Overture Maps Foundation (S3)  | `duckdbWorker.ts`          | Remote GeoParquet         |
+| **Raw Normalized Features** | `duckdbWorker` / `useOverpass` | `normalization.ts`         | GeoJSON FeatureCollection |
+| **ProjectEnvelope**         | `useEditorModel`               | Save Project (.json)       | Custom v1.0.0 JSON        |
+| **Derived Surfaces**        | `viewSurfaces.ts` / Clipper    | Export Scene (.geojson)    | 2D Polygon GeoJSON        |
+| **Editor Scene Payload**    | `exportEditorGodotPayload.ts`  | Godot (`POST /api/import`) | Scene Payload v1.0.0      |
 
-- [ ] Decouple `web/src/components/ExportControls.vue` and `web/src/App.vue` from assuming a Godot-first workflow.
-- [ ] Provide explicit standalone actions: **Open File**, **Save Scenario JSON**, **Export GeoJSON**, **Send to 3D View (Godot)**.
-- [ ] Make Godot bridge discovery passive and non-blocking (poll status with backoff; display connection chip in status bar).
-
-### Phase 2: DuckDB-WASM Infrastructure in `web/`
-
-- [ ] Add `@duckdb/duckdb-wasm` and `apache-arrow` to `web/package.json`.
-- [ ] Configure Vite for WebAssembly worker bundling and cross-origin isolation headers (COOP/COEP where required).
-- [ ] Implement `web/src/services/duckdb.ts`:
-  - Worker lifecycle management (instantiation, bundle selection: MVP vs. EH/SIMD).
-  - Extension initialization (`spatial`, HTTP file access).
-  - Parameterized query runner returning GeoJSON feature arrays.
-
-### Phase 3: Client-Side Overture Acquisition
-
-- [ ] Implement `web/src/composables/useOvertureWasm.ts`:
-  - Coordinate queries across `buildings`, `transportation` (segments/connectors), and `places`.
-  - Progress reporting: bytes transferred, features parsed, query timing.
-  - Convert Arrow table outputs to the project's standard GeoJSON `FeatureCollection` format.
-- [ ] Wire acquisition directly into the 2D Editor model (`useEditorModel.ts`).
-- [ ] Deprecate `scripts/fetch_overture.py` and remove Python subprocess calls from `godot_project/addons/osm_importer/http_server.gd`.
-
-### Phase 4: Standalone Packaging & Tooling (Optional Expansion)
-
-- [ ] Support Progressive Web App (PWA) manifest and offline service worker for cached tile/scenario editing.
-- [ ] Evaluate native desktop packaging (Go Wails or Rust Tauri) **only if** filesystem access or native OS windowing is required beyond what the standalone web app provides.
-
----
-
-## 6. Risks & Mitigations
-
-| Risk                         | Impact                                                                | Mitigation                                                                                                                                                                                                    |
-| :--------------------------- | :-------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **S3 CORS / Range Requests** | Overture S3 bucket might restrict direct browser range requests.      | Overture's public S3 buckets currently permit anonymous GET and HEAD with CORS. Verify range request compatibility early in Phase 2. Fall back to Cloudflare R2 mirror or lightweight CORS proxy if required. |
-| **WASM Memory Limits**       | Large bounding boxes (>50k buildings) may exhaust browser tab memory. | Enforce bbox size constraints in the UI before query execution; stream batches using Arrow record batches instead of materializing full GeoJSON strings.                                                      |
-| **Initial WASM Bundle Size** | DuckDB-WASM + Spatial extension adds ~15–20MB download on first load. | Lazy-load the DuckDB worker only when the user selects the Overture layer or initiates an Overture query. Keep standard Overpass (OSM) instant and zero-overhead.                                             |
+_Task tracking and implementation phases are managed in [`todo/duckdb_wasm_standalone_editor.md`](../todo/duckdb_wasm_standalone_editor.md)._

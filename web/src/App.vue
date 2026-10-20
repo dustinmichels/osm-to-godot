@@ -160,10 +160,10 @@ function resetBoxToCenter() {
     <!-- Top Navigation Header -->
     <header class="app-header">
       <div class="brand">
-        <div class="brand-badge">OSM</div>
+        <div class="brand-badge">2D</div>
         <div class="brand-text">
-          <h1 class="brand-title">OSM to Godot</h1>
-          <span class="brand-tag">3D Scene Extractor</span>
+          <h1 class="brand-title">City &amp; Street 2D Studio</h1>
+          <span class="brand-tag">Interactive Urban Geometry Editor</span>
         </div>
       </div>
 

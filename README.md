@@ -1,104 +1,44 @@
 # OSM-to-Godot
 
-Extract real-world OpenStreetMap (OSM) data via an interactive web interface and deterministically generate 3D Godot scenes with accurate road profiles, bike lanes, surface materials, and extruded buildings.
+Extract real-world geographic data (OpenStreetMap & Overture Maps) and generate procedural 3D Godot scenes with accurate road profiles, bike lanes, surface materials, and extruded buildings.
+
+Includes an in-browser 2D street and map editor, a local HTTP bridge, and a rigged 3D character controller for on-foot exploration.
+
+---
 
 ## Architecture
 
-- **`web/` (Phase 1)**: Interactive web bounding-box downloader built with Bun, Vite, Vue 3, and MapLibre GL. Features direct "Send to Godot" HTTP integration and exports `osm_export.json`.
-- **`godot_project/addons/osm_importer/` (Phases 2–5)**: Godot 4 EditorPlugin and processing pipeline:
-  - `http_server.gd`: Embedded local HTTP server running on port 8080. Serves the bundled web interface directly and provides an `/api/import` endpoint with CORS support.
-  - `osm_dock.gd`: Bottom panel editor UI with server status, 1-click browser launch button, and live import activity monitor.
-  - `projection.gd`: Converts WGS84 coordinates (latitude/longitude in degrees) to local metric Cartesian coordinates (Godot $X, Y, Z$) centered on the bounding box centroid to avoid 32-bit floating-point jitter.
-  - `osm_parser.gd`: Ingests Overpass JSON/XML, groups features into highways, standalone buildings, and multipolygon building relations, deduplicates vertices ($<0.05\text{m}$), enforces polygon closure, and normalizes polygon winding order (CCW for exterior, CW for holes).
+- **`web/`**: Standalone 2D Map & Street Studio built with Bun, Vite, Vue 3, and MapLibre GL.
+  - Bounding-box area selector with telemetry (bounds, dimensions, area).
+  - In-browser, zero-dependency ingestion from Overture Maps (via client-side DuckDB-WASM directly from S3 GeoParquet) and OpenStreetMap (Overpass API).
+  - 2D corridor, lane cross-section, and building footprint editing in plan view.
+  - Project save (`ProjectEnvelope` JSON) and scene surface export (`GeoJSON`).
+  - Optional direct HTTP bridge sending generated scene payloads to Godot (`POST 127.0.0.1:8080/api/import`).
+- **`godot_project/addons/osm_importer/`**: Godot 4 EditorPlugin and procedural geometry engine:
+  - `http_server.gd`: Local HTTP server (port 8080) serving bundled web assets and receiving import payloads.
+  - `osm_dock.gd`: Bottom editor dock with bridge status, browser launcher, and generation toggles.
+  - `projection.gd`: Converts WGS84 coordinates to local metric Cartesian coordinates ($X, Y, Z$) relative to the bounding box centroid, preventing 32-bit floating-point jitter.
+  - `osm_parser.gd` & `geojson_parser.gd`: Normalizes OSM Overpass JSON/XML and Overture GeoJSON into unified building, road, and POI records.
+  - `building_builder.gd`: Extrudes buildings via interactive `CSGPolygon3D` or batched `ArrayMesh` with Earcut roof triangulation, multi-tier height inference, and POI/address naming.
+  - `road_builder.gd`: Procedural road, sidewalk, and bike lane ribbons with miter clamping, vertical layer offsets, and PBR materials.
+  - `scene_builder.gd`: Assembles complete scenes with lighting, collision planes, and POI `Marker3D` nodes.
+- **`godot_project/character/`**: Rigged third-person character controller (`character.tscn`) with locomotion animations (CC0 by Quaternius) and overhead flycam toggle.
+
+## Design Philosophy
+
+- **Real-world data as a seed**: Importing real-world geographic data (OSM or Overture) provides initial spatial layouts and corridor geometry, acting as a project baseline rather than a synchronized database.
+- **Intentional simplification**: It is acceptable and expected to simplify geometry and drop non-essential cartographic details during ingestion. Pristine fidelity to raw surveyor idiosyncrasies is deprioritized in favor of geometric clarity and simulation performance.
+- **2D editor as a design tool**: The 2D studio is an active authoring and redesign environment—enabling users to reshape corridors, reallocate right-of-way, edit lane cross-sections, and modify urban form.
+- **Compilation to 3D simulation**: The 2D representation compiles unidirectionally into a 3D Godot scene for real-time traversal, physics, and visual evaluation.
+- **No backward compatibility with OSM**: The internal schema has no requirement to maintain backwards compatibility, round-trip sync, or changeset fidelity with raw OpenStreetMap data or IDs.
 
 ---
 
-## Installing the Godot Addon
+## Quickstart
 
-### In an Existing Godot 4 Project
+### Standalone Web Studio (No Godot Required)
 
-1. Copy the `godot_project/addons/osm_importer` directory into your project's `addons/` folder:
-   ```bash
-   cp -r godot_project/addons/osm_importer <your_godot_project>/addons/
-   ```
-2. Open your project in the **Godot 4 Editor**.
-3. Navigate to **Project -> Project Settings -> Plugins**.
-4. Find **OSM Importer** in the plugins list and check the **Enable** checkbox.
-
-### Running with the Included Godot Project
-
-The repository includes a ready-to-use Godot 4 project in `godot_project/`:
-
-```bash
-# Clear any previous city and open in Godot 4 Editor
-mise run dev
-
-# Or open directly without clearing
-godot --editor --path godot_project
-```
-
----
-
-## Integrated Workflow: One-Click Web Selector & Direct Import
-
-Once the **OSM Importer** plugin is enabled:
-
-1. Look at the bottom editor panel and click the **OSM Importer** tab (or click **🗺️ OSM Selector** on the 3D viewport toolbar).
-2. Click **🌐 Open Web Selector**. The plugin opens the embedded MapLibre web app in your default browser (running on `http://127.0.0.1:8080`).
-3. Pan or search for an area, drag a bounding box, and click **⚡ Send to Godot**.
-4. The web app transfers the data directly over HTTP into Godot. The plugin saves it to `res://data/osm_export.json`, automatically generates the 3D city scene (`res://city_viewer.tscn`) with extruded buildings, roof triangulation, PBR materials, and physics colliders, and opens it directly in the 3D editor viewport.
-5. You can also re-generate at any time by clicking **🔨 Generate 3D City** in the bottom panel dock, or press **F5** to run the 3D scene directly. The player character is automatically placed on a street ready for immediate exploration.
-
-### 3D Character Exploration
-
-A rigged human character model (`godot_project/character/`) is included to let you explore imported cities on foot from a third-person perspective:
-
-- **Human Character Model (`human_character.blend` & `human_character.glb`):**
-  - 66-bone humanoid skeleton armature and mannequin mesh (CC0 Public Domain by Quaternius).
-  - Full animation set: `Idle_A`, `Walk`, `Jog`, `Sprint`, `Jump_Start`, `Jump_air`, `Jump_Land`, `Crouch`, `Dance`.
-  - Configured as a Godot `CharacterBody3D` (`res://character/character.tscn`) with a capsule collision shape and collision-detecting `SpringArm3D` camera rig.
-- **Automatic Placement:**
-  - When the 3D city scene is generated or imported from OSM, the player is automatically plopped onto a street or open area near the center of the bounding box at ground level.
-  - A continuous walkable ground collision plane is generated under the city so you can walk seamlessly across streets, sidewalks, and plazas.
-- **Controls:**
-  - **⌨️ Arrow Keys or W / A / S / D:** Walk forward, back, left, right (movement is relative to camera view).
-  - **🚀 Shift:** Sprint (accelerates and plays sprint animation).
-  - **⬆️ Space:** Jump.
-  - **🖱️ Left / Right Mouse Drag:** Orbit camera 360° around the character.
-  - **🔄 Scroll Wheel:** Zoom third-person camera in and out.
-  - **📷 [V] / [Tab]:** Seamlessly toggle between Third-Person Character View and Overhead Free Fly Camera.
-  - **ℹ️ [H]:** Toggle on-screen controls HUD.
-  - **Esc:** Release mouse cursor capture.
-
-### Building Generation Modes
-
-- **Extrude 2D Footprints (`CSGPolygon3D`) — Recommended for Small Areas & Prototyping:**
-  - Enabled by default via the **Extrude 2D Footprints (CSG)** checkbox in the bottom dock panel.
-  - Each building is generated as an extruded 2D polygon footprint centered at its real-world centroid and base elevation.
-  - **Interactive in-editor editing:** Clicking any building in the Godot 3D viewport exposes the 2D polygon handles so you can drag vertices, reshape footprints, or adjust the `depth` (height) property directly in the Inspector.
-  - Courtyards and interior lightwells are carved cleanly using child `CSGPolygon3D` nodes configured with `OPERATION_SUBTRACTION`.
-  - Colliders are handled natively on the CSG node (`use_collision = true`).
-
-- **Standard Static Mesh (`ArrayMesh`) — Recommended for Large / City-Scale Imports:**
-  - Uncheck **Extrude 2D Footprints (CSG)** to use the high-performance `ArrayMesh` pipeline.
-  - Generates two separate surfaces per building (Surface 0: Walls with unrolled UVs; Surface 1: Roofs triangulated via Earcut).
-  - Supports material batching and spatial 500m grid chunking for maximum draw-call efficiency across thousands of buildings.
-
-### Future Enhancement to Try: 2D Footprint Simplification (Douglas-Peucker)
-
-Real-world OpenStreetMap footprints traced from aerial satellite photography often contain 30–60 vertices per building, including tiny centimeter-level jitter, alcove notches, and redundant collinear points along straight walls.
-
-A planned/experimental enhancement is running a **Ramer-Douglas-Peucker (RDP)** or **Visvalingam-Whyatt** 2D polygon simplification pass before extrusion:
-
-- **Straightening walls:** Setting a simplification tolerance ($\epsilon \approx 0.5\text{m} - 1.0\text{m}$) eliminates microscopic edge segments and snaps noisy outlines into crisp, clean rectangular shapes.
-- **Right-angle orthogonalization:** Snapping corners near $90^\circ$ creates clean, stylized architectural "white-box" geometry.
-- **Reduced complexity:** Decreases footprint vertex counts by 70–85%, producing cleaner wireframes in both `CSGPolygon3D` and `ArrayMesh` modes without sacrificing building silhouette fidelity.
-
----
-
-## Running the Web Downloader in Development Mode
-
-If you want to modify or develop the Vue frontend:
+The 2D Urban Geometry Studio runs completely standalone in your browser with zero host dependencies or Python toolchains:
 
 ```bash
 cd web
@@ -106,7 +46,19 @@ bun install
 bun run dev
 ```
 
-Visit `http://localhost:5173`. When Godot is open with the plugin enabled, the web app detects the Godot editor connection on port 8080, and the **⚡ Send to Godot** button will route exports directly to the editor!
+Visit `http://localhost:5173` to select a bounding box, query Overture GeoParquet directly via DuckDB-WASM over HTTPS, edit street profiles in 2D, and save projects or export GeoJSON scenes.
+
+### Running with the Godot Engine (Optional 3D Simulation)
+
+Prerequisites: [mise](https://mise.jdx.dev/) and [Godot 4](https://godotengine.org/).
+
+```bash
+# Clear any prior city scene and launch Godot Editor
+mise run dev
+
+# Or launch directly without clearing
+godot --editor --path godot_project
+```
 
 To bundle web changes into the Godot plugin:
 
@@ -114,58 +66,65 @@ To bundle web changes into the Godot plugin:
 mise run build-web
 ```
 
-```bash
-cd web
-bun install
-bun run dev
-```
+### Installing into an Existing Godot Project
 
-Visit `http://localhost:5173` to select a bounding box, search addresses, and download `osm_export.json`.
+1. Copy `godot_project/addons/osm_importer` into your project's `addons/` directory.
+2. In Godot, go to **Project -> Project Settings -> Plugins** and enable **OSM Importer**.
+3. Use the bottom panel dock tab or toolbar button to launch the web studio and import data.
 
 ---
 
-## Converting OSM Export to GeoJSON
+## Workflow
 
-Convert a downloaded `osm_export.json` file to GeoJSON in `data/map.geojson`:
+1. **Launch 2D Studio**: Run `bun run dev` in `web/` (or open Godot and click **🌐 Open Web Selector** in the bottom **OSM Importer** dock).
+2. **Acquire Geometry**: Select any bounding box and click **Acquire Overture (DuckDB)**. DuckDB-WASM streams buildings, transportation segments, places, and addresses directly from Overture S3 GeoParquet in your browser.
+3. **Edit in 2D**: Reshape corridors, adjust lane cross-sections, bike infrastructure, and building heights in plan view.
+4. **Save or Export**:
+   - Save your project as `ProjectEnvelope` JSON to resume editing later.
+   - Export 2D scene surfaces as standard GeoJSON.
+   - If Godot 4 is running, click **⚡ Send to Godot 3D** to stream geometry directly via the HTTP bridge.
+5. **Explore in 3D (Godot)**: The scene generates procedurally in `res://city_viewer.tscn`. Press **F5** to walk or fly through the generated urban space with the character controller.
 
-```bash
-mise run convert-geojson
-```
+### Controls
 
-When prompted, drag and drop the exported file into your terminal (or pass the path directly as an argument):
+| Input                       | Action                                |
+| :-------------------------- | :------------------------------------ |
+| **W / A / S / D** or Arrows | Move character (relative to camera)   |
+| **Shift**                   | Sprint                                |
+| **Space**                   | Jump                                  |
+| **Mouse Drag**              | Orbit camera                          |
+| **Scroll Wheel**            | Zoom camera                           |
+| **V / Tab**                 | Toggle Third-Person / Overhead Flycam |
+| **H**                       | Toggle on-screen controls HUD         |
+| **Esc**                     | Release mouse capture                 |
 
-```bash
-mise run convert-geojson '/Users/dustinmichels/Downloads/osm_export(1).json'
-```
+### Building Generation Modes
 
-The converted file is written to `data/map.geojson`.
----
-
-## Running Automated Tests
-
-Run the headless Godot test suite against all fixtures:
-
-```bash
-mise run test
-```
-
-Or run directly via Godot:
-
-```bash
-godot --headless --path godot_project -s res://test_importer_headless.gd
-```
-
-Run the web test suite:
-
-```bash
-mise run test-web
-# or: cd web && bun test
-```
+- **Extrude 2D Footprints (`CSGPolygon3D`) — Default**: Each building is an extruded 2D polygon with vertex handles visible in the 3D viewport for direct manual editing in the Inspector. Courtyards are carved via subtraction. Collisions are handled natively.
+- **Standard Static Mesh (`ArrayMesh`)**: High-performance multi-surface meshes (Surface 0: Walls with unrolled UVs, Surface 1: Earcut roofs). Recommended for large city-scale imports and spatial chunking.
 
 ---
 
-## Standalone Desktop Distribution
+## Tasks & Commands
 
-To package OSM-to-Godot as a standalone, turnkey desktop application for general users (with Godot engine runtime bundled), see the detailed guide:
+| Task                      | Command                             | Description                                                         |
+| :------------------------ | :---------------------------------- | :------------------------------------------------------------------ |
+| `mise run dev`            | `godot --editor`                    | Clears scene and opens Godot editor                                 |
+| `mise run test`           | Headless Godot                      | Runs full engine test suite against all fixtures                    |
+| `mise run test-web`       | `bun test`                          | Runs web composable and geometry unit tests                         |
+| `mise run build-web`      | `bun run build:addon`               | Compiles web app into `godot_project/addons/osm_importer/web_dist/` |
+| `mise run fmt`            | `gdformat` + `oxfmt`                | Formats GDScript and Markdown files                                 |
+| `mise run geojson`        | `./scripts/convert-geojson.sh`      | Converts OSM export JSON to GeoJSON                                 |
+| `mise run fetch-overture` | `python3 scripts/fetch_overture.py` | [LEGACY] Headless CLI Overture fetch tool                           |
 
-- [**Standalone Desktop Tool & Distribution Guide**](docs/standalone_distribution.md)
+---
+
+## Documentation
+
+- [Design Philosophy](docs/design_philosophy.md): 2D design tool to 3D simulation pipeline, lossy ingestion, and decoupling from OSM backward compatibility.
+- [Building Naming & POI Integration](docs/building_naming_and_pois.md): Address and POI fallback matching ladder.
+- [Export Clipping Policy](docs/export_clipping_policy.md): Bounding box geometry retention and polygon clipping modes.
+- [Road Profile Audit](docs/road_profile_audit.md): Cross-section rules, lane widths, and bike-lane resolutions.
+- [Standalone Distribution](docs/standalone_distribution.md): Packaging as a turnkey desktop application without engine prerequisites.
+- [DuckDB-WASM Editor Plan](docs/duckdb_wasm_standalone_editor_plan.md): In-browser GeoParquet spatial querying architecture.
+- [Character Attribution](godot_project/character/CREDITS.md): CC0 character asset credits.

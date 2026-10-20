@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """
+[DEPRECATED / LEGACY CLI TOOL]
 Fetch Overture Maps data (buildings, transportation/roads, places/POIs) for a bounding box
-and export a clean GeoJSON FeatureCollection for Godot ingestion.
+and export a clean GeoJSON FeatureCollection.
+
+Note: The web studio (City & Street 2D Studio) now ingests Overture Maps data directly in-browser
+using client-side DuckDB-WASM over HTTPS without requiring Python or the host CLI.
+This script is preserved for headless / offline command-line testing only.
 """
 
 import argparse

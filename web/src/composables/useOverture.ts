@@ -89,59 +89,7 @@ export interface OvertureParseResult {
   success: boolean
   payload?: OvertureFeatureCollection
   error?: string
-  isCommandFile?: boolean
   themeReport?: OvertureThemeReport
-}
-export interface OvertureCommandFile {
-  type: 'command_file'
-  note: string
-  metadata: {
-    source: string
-    bbox: [number, number, number, number]
-    command: string
-  }
-}
-
-export function createOvertureCommandFile(box: BoundingBox): OvertureCommandFile {
-  const bboxStr = `${box.west},${box.south},${box.east},${box.north}`
-  return {
-    type: 'command_file',
-    note: 'Bounding-box query file for Overture Maps acquisition (command file, NOT downloaded map data). Run the command below in your terminal to acquire GeoJSON, then use the file open/drop zone in the editor.',
-    metadata: {
-      source: 'Overture Maps Foundation',
-      bbox: [box.west, box.south, box.east, box.north],
-      command: `mise run fetch-overture --bbox="${bboxStr}"`
-    }
-  }
-}
-
-export function downloadOvertureCommandFile(box: BoundingBox, filename?: string) {
-  const info = createOvertureCommandFile(box)
-  const name =
-    filename ||
-    `overture_fetch_command_${box.south.toFixed(4)}_${box.west.toFixed(4)}.json`
-  const blob = new Blob([JSON.stringify(info, null, 2)], {
-    type: 'application/json'
-  })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = name
-  link.click()
-  URL.revokeObjectURL(url)
-}
-
-export function isOvertureCommandFile(json: unknown): boolean {
-  if (!json || typeof json !== 'object') return false
-  const obj = json as Record<string, unknown>
-  const metadata = obj.metadata as Record<string, unknown> | undefined
-  if (obj.type === 'command_file') return true
-  return Boolean(
-    (obj.note && metadata?.command) ||
-    (typeof obj.note === 'string' && obj.note.toLowerCase().includes('command file')) ||
-    (metadata?.command && !obj.features && !obj.elements) ||
-    (obj.command && !obj.features && !obj.elements)
-  )
 }
 
 export function analyzeOvertureThemes(raw: unknown): OvertureThemeReport {
@@ -375,14 +323,6 @@ export function parseOvertureData(input: string | unknown): OvertureParseResult 
   }
 
   const obj = json as Record<string, unknown>
-
-  if (isOvertureCommandFile(obj)) {
-    return {
-      success: false,
-      isCommandFile: true,
-      error: 'The selected file is a bounding-box command file, NOT downloaded map data. Run the command to fetch GeoJSON, then import the GeoJSON file.'
-    }
-  }
   // Detect project envelope files with schemaVersion / schema_version
   if ('schemaVersion' in obj || 'schema_version' in obj) {
     const rawVersion = 'schemaVersion' in obj ? obj.schemaVersion : obj.schema_version
@@ -584,8 +524,6 @@ export function useOverture() {
     getCachedPreset,
     executeExport,
     downloadGeoJsonFile,
-    createOvertureCommandFile,
-    downloadOvertureCommandFile,
     parseOvertureData,
     loadOvertureFileContent,
     fetchFromBridge,

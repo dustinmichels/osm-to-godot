@@ -3,7 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useEditorModel } from '@/composables/useEditorModel'
 import { useGodotBridge } from '@/composables/useGodotBridge'
 import { useWorkspace } from '@/composables/useWorkspace'
-import { useOverture, isOvertureCommandFile } from '@/composables/useOverture'
+import { useOverture } from '@/composables/useOverture'
 import { normalizeOverturePayload, normalizeOsmPayload } from '@/composables/editor/normalization'
 import { getEditorWorkerBridge } from '@/composables/editor/editorWorkerBridge'
 import { validateImportPayload } from '@/composables/editor/validation'
@@ -166,7 +166,7 @@ const preflightTargetAction = ref<'godot' | 'scene_geojson'>('godot')
 
 const godotBtnTitle = computed(() => {
   if (!isConnected.value) {
-    return 'Godot is disconnected. Connect Godot import server to send scene directly.'
+    return 'Godot import server offline (expected on 127.0.0.1:8080). Launch Godot with the OSM/Overture importer to send scene.'
   }
   if (sceneExportPreflight.value.blockingErrors.length > 0) {
     return `${sceneExportPreflight.value.blockingErrors.length} blocking geometry error(s) must be resolved or excluded before exporting`
@@ -177,7 +177,7 @@ const godotBtnTitle = computed(() => {
   if (featureCount.value === 0) {
     return 'No features to export'
   }
-  return 'Review export preflight and send edited project to Godot scene generator'
+  return 'Review export preflight and send edited project to Godot 3D scene generator'
 })
 
 function openPreflight(target: 'godot' | 'scene_geojson' = 'godot') {
@@ -244,11 +244,6 @@ async function handleOpenFileSelected(e: Event) {
     const text = await file.text()
     try {
       const json = JSON.parse(text)
-      if (isOvertureCommandFile(json)) {
-        alert('The selected file is a bounding-box command file, NOT downloaded map data. Run the command inside it in your terminal to fetch GeoJSON, then import the resulting GeoJSON file.')
-        target.value = ''
-        return
-      }
       if (json && typeof json === 'object' && ('schemaVersion' in json || 'schema_version' in json)) {
         const valResult = validateImportPayload(json)
         if (!valResult.valid) {
@@ -534,8 +529,8 @@ async function handleOpenFileSelected(e: Event) {
           ? `Godot import server connected on port ${godotPort}. Scenes can be streamed directly into Godot.`
           : 'Godot import server offline. Viewing, editing, project saving, and GeoJSON scene export work completely independently without Godot.'"
       >
-        <span class="badge-dot" />
-        <span class="badge-label">{{ isConnected ? `Godot :${godotPort}` : 'Godot Offline' }}</span>
+        <span class="badge-dot">{{ isConnected ? '●' : '○' }}</span>
+        <span class="badge-label">{{ isConnected ? `Godot :${godotPort} (Linked)` : 'Godot (Offline)' }}</span>
       </div>
 
       <button
@@ -563,9 +558,8 @@ async function handleOpenFileSelected(e: Event) {
         <svg v-else viewBox="0 0 20 20" fill="currentColor" class="toolbar-icon">
           <path d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" />
         </svg>
-        <span>{{ isConnected ? '⚡ Send to Godot' : 'Send to Godot' }}</span>
+        <span>⚡ Send to Godot 3D</span>
       </button>
-
       <button
         type="button"
         class="toolbar-btn back-btn"
