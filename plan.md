@@ -38,30 +38,29 @@ Comprehensive implementation plan for extracting real-world OpenStreetMap (OSM) 
 
 ## Phase 2: Data Normalization & Coordinate Projection
 
-- [ ] **2.1 Coordinate Projection System**
-  - [ ] Compute bounding box centroid $(\phi_0, \lambda_0)$ in radians as the local origin $(0, 0, 0)$.
-  - [ ] Implement metric Equirectangular / Local Tangent Plane projection:
+- [x] **2.1 Coordinate Projection System**
+  - [x] Compute bounding box centroid $(\phi_0, \lambda_0)$ in radians as the local origin $(0, 0, 0)$.
+  - [x] Implement metric Equirectangular / Local Tangent Plane projection:
         $$x = R \cdot (\lambda - \lambda_0) \cdot \cos(\phi_0) \cdot \frac{\pi}{180^\circ}$$
         $$z = -R \cdot (\phi - \phi_0) \cdot \frac{\pi}{180^\circ}$$
         where Earth radius $R = 6,378,137\text{ m}$.
-  - [ ] Align with Godot 3D coordinate system:
+  - [x] Align with Godot 3D coordinate system:
     - $+X$ = East
     - $+Y$ = Up (Elevation / Building Height)
     - $-Z$ = North
     - $1.0\text{ Godot unit} = 1.0\text{ meter}$ real-world scale.
-  - [ ] Prevent 32-bit floating point precision jitter by ensuring all vertex coordinates are relative to local origin $(0, 0, 0)$.
+  - [x] Prevent 32-bit floating point precision jitter by ensuring all vertex coordinates are relative to local origin $(0, 0, 0)$.
 
-- [ ] **2.2 Feature Ingestion & Geometry Assembly**
-  - [ ] Parse Overpass JSON `elements[]` or OSM XML `<way>` and `<relation>`.
-  - [ ] Group features into:
+- [x] **2.2 Feature Ingestion & Geometry Assembly**
+  - [x] Parse Overpass JSON `elements[]` or OSM XML `<way>` and `<relation>`.
+  - [x] Group features into:
     - Linear Highway ways (`tags.highway != null`).
     - Building footprint ways (`tags.building != null` and closed loop).
     - Building multipolygon relations (`tags.type == "multipolygon"` and `tags.building != null`).
-  - [ ] Clean and sanitize coordinates:
+  - [x] Clean and sanitize coordinates:
     - Remove duplicate adjacent vertices within a tolerance of $<0.05\text{m}$.
     - Verify polygon closure (first point equals last point).
     - Enforce counter-clockwise (CCW) winding for exterior rings.
-
 ---
 
 ## Phase 3: Building Footprint & 3D Extrusion Engine

@@ -6,10 +6,56 @@ import TelemetryPanel from '@/components/TelemetryPanel.vue'
 import ExportControls from '@/components/ExportControls.vue'
 import BasemapSelector from '@/components/BasemapSelector.vue'
 import { useBBox } from '@/composables/useBBox'
+import { parseUrlState, useUrlSync } from '@/composables/useUrlSync'
+import type { CameraChangePayload } from '@/components/MapView.vue'
 
 const mapViewRef = ref<InstanceType<typeof MapView> | null>(null)
-const { initDefaultBBox, hasBBox, isSelectionMode, toggleSelectionMode } = useBBox()
+const { initDefaultBBox, hasBBox, centroid, isSelectionMode, toggleSelectionMode, setBBox } = useBBox()
 
+const initialUrlState = parseUrlState()
+if (initialUrlState.bbox) {
+  setBBox(initialUrlState.bbox)
+}
+
+const initialCenter: [number, number] = initialUrlState.center
+  ? [initialUrlState.center.lon, initialUrlState.center.lat]
+  : initialUrlState.bbox
+    ? [
+        (initialUrlState.bbox.west + initialUrlState.bbox.east) / 2,
+        (initialUrlState.bbox.south + initialUrlState.bbox.north) / 2
+      ]
+    : [4.8952, 52.3702]
+
+const initialZoom: number = initialUrlState.zoom ?? 15
+const cameraZoom = ref(initialZoom)
+
+function onCameraChange(payload: CameraChangePayload) {
+  cameraZoom.value = Math.round(payload.zoom * 100) / 100
+}
+
+useUrlSync({
+  cameraZoom,
+  getMapCenter: () => mapViewRef.value?.getCenter() ?? null,
+  onNavigate: (lon, lat) => {
+    mapViewRef.value?.flyTo(lon, lat)
+  }
+})
+
+const isCopied = ref(false)
+let copyTimer: number | undefined
+
+async function copyShareUrl() {
+  try {
+    await navigator.clipboard.writeText(window.location.href)
+    isCopied.value = true
+    clearTimeout(copyTimer)
+    copyTimer = window.setTimeout(() => {
+      isCopied.value = false
+    }, 2000)
+  } catch (err) {
+    console.error('Failed to copy URL:', err)
+  }
+}
 interface PresetLocation {
   name: string
   subtitle: string
@@ -73,7 +119,12 @@ function resetBoxToCenter() {
   <div class="app-root">
     <!-- Map Background -->
     <div class="map-layer">
-      <MapView ref="mapViewRef" />
+      <MapView
+        ref="mapViewRef"
+        :initial-center="initialCenter"
+        :initial-zoom="initialZoom"
+        @camera-change="onCameraChange"
+      />
     </div>
 
     <!-- Top Navigation Header -->
@@ -88,7 +139,11 @@ function resetBoxToCenter() {
 
       <!-- Geocoder Search Bar -->
       <div class="header-search">
-        <SearchBar @select="onSearchSelect" />
+        <SearchBar
+          :center-lat="centroid?.lat"
+          :center-lon="centroid?.lon"
+          @select="onSearchSelect"
+        />
       </div>
 
       <!-- Top Toolbar Actions -->
@@ -131,6 +186,23 @@ function resetBoxToCenter() {
             <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
           <span>Reset</span>
+        </button>
+
+        <button
+          type="button"
+          class="action-btn"
+          :class="{ 'is-copied': isCopied }"
+          title="Copy shareable link with current centerpoint and bounding box"
+          @click="copyShareUrl"
+        >
+          <svg v-if="!isCopied" viewBox="0 0 20 20" fill="none" stroke="currentColor" class="btn-icon">
+            <path d="M9 11a4 4 0 005.657 0l2.828-2.829a4 4 0 00-5.657-5.656L10.5 3.843" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M11 9a4 4 0 00-5.657 0L2.515 11.828a4 4 0 005.657 5.657L9.5 16.157" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <svg v-else viewBox="0 0 20 20" fill="none" stroke="currentColor" class="btn-icon">
+            <path d="M4 10l4 4L16 6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <span>{{ isCopied ? 'Copied Link' : 'Copy Link' }}</span>
         </button>
 
         <BasemapSelector />
@@ -298,6 +370,12 @@ body,
   color: #ffffff;
   box-shadow: 0 4px 18px rgba(37, 99, 235, 0.45);
 }
+.action-btn.is-copied {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: rgba(52, 211, 153, 0.45);
+  color: #34d399;
+}
+
 
 .action-btn-subtle {
   color: #94a3b8;

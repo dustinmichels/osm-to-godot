@@ -1,0 +1,11 @@
+; Engine configuration file.
+config_version=5
+
+[application]
+
+config/name="OSM to Godot"
+config/features=PackedStringArray("4.3", "Forward Plus")
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/osm_importer/plugin.cfg")

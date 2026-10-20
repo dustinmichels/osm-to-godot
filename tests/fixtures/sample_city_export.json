@@ -1,0 +1,92 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "generator": "osm-to-godot web exporter",
+    "timestamp": "2026-10-19T12:00:00.000Z",
+    "source": "overpass",
+    "bbox": {
+      "south": 42.3590,
+      "west": -71.0610,
+      "north": 42.3610,
+      "east": -71.0590
+    },
+    "centroid": {
+      "lon": -71.0600,
+      "lat": 42.3600,
+      "lonRad": -1.240234,
+      "latRad": 0.739320
+    },
+    "dimensions": {
+      "widthMeters": 164.5,
+      "heightMeters": 222.4,
+      "areaKm2": 0.036
+    }
+  },
+  "elements": [
+    {
+      "type": "way",
+      "id": 1001,
+      "tags": {
+        "highway": "residential",
+        "name": "Main Street",
+        "lanes": "2",
+        "surface": "asphalt"
+      },
+      "geometry": [
+        { "lat": 42.3595, "lon": -71.0605 },
+        { "lat": 42.3595, "lon": -71.0605 },
+        { "lat": 42.3600, "lon": -71.0600 },
+        { "lat": 42.3605, "lon": -71.0595 }
+      ]
+    },
+    {
+      "type": "way",
+      "id": 2001,
+      "tags": {
+        "building": "commercial",
+        "building:levels": "4"
+      },
+      "geometry": [
+        { "lat": 42.3601, "lon": -71.0603 },
+        { "lat": 42.3603, "lon": -71.0603 },
+        { "lat": 42.3603, "lon": -71.0601 },
+        { "lat": 42.3601, "lon": -71.0601 },
+        { "lat": 42.3601, "lon": -71.0603 }
+      ]
+    },
+    {
+      "type": "relation",
+      "id": 3001,
+      "tags": {
+        "type": "multipolygon",
+        "building": "apartments"
+      },
+      "members": [
+        {
+          "type": "way",
+          "ref": 3101,
+          "role": "outer",
+          "geometry": [
+            { "lat": 42.3591, "lon": -71.0608 },
+            { "lat": 42.3597, "lon": -71.0608 },
+            { "lat": 42.3597, "lon": -71.0602 },
+            { "lat": 42.3591, "lon": -71.0602 },
+            { "lat": 42.3591, "lon": -71.0608 }
+          ]
+        },
+        {
+          "type": "way",
+          "ref": 3102,
+          "role": "inner",
+          "geometry": [
+            { "lat": 42.3593, "lon": -71.0606 },
+            { "lat": 42.3595, "lon": -71.0606 },
+            { "lat": 42.3595, "lon": -71.0604 },
+            { "lat": 42.3593, "lon": -71.0604 },
+            { "lat": 42.3593, "lon": -71.0606 }
+          ]
+        }
+      ]
+    }
+  ]
+}

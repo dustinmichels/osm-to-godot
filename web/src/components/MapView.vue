@@ -23,6 +23,14 @@ const props = withDefaults(defineProps<Props>(), {
   initialCenter: () => [4.8952, 52.3702], // Amsterdam Centrum
   initialZoom: 15
 })
+export interface CameraChangePayload {
+  center: [number, number]
+  zoom: number
+}
+
+const emit = defineEmits<{
+  (e: 'cameraChange', payload: CameraChangePayload): void
+}>()
 
 const mapContainer = ref<HTMLDivElement | null>(null)
 let map: Map | null = null
@@ -356,6 +364,11 @@ function getCenter(): [number, number] | null {
   const center = map.getCenter()
   return [center.lng, center.lat]
 }
+function getZoom(): number | null {
+  if (!map) return null
+  return map.getZoom()
+}
+
 
 onMounted(() => {
   try {
@@ -393,6 +406,17 @@ onMounted(() => {
     if (!currentBBox.value) {
       initDefaultBBox(props.initialCenter[0], props.initialCenter[1], 300)
     }
+    const onCameraChange = () => {
+      if (!map) return
+      const center = map.getCenter()
+      emit('cameraChange', {
+        center: [center.lng, center.lat],
+        zoom: map.getZoom()
+      })
+    }
+
+    instance.on('move', onCameraChange)
+    instance.on('zoom', onCameraChange)
 
     setupInteractionListeners()
 
@@ -422,7 +446,8 @@ defineExpose({
   flyTo,
   zoomToBBox,
   toggleSelectionMode,
-  getCenter
+  getCenter,
+  getZoom
 })
 </script>
 

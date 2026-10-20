@@ -1,4 +1,7 @@
-[tasks.test]
-description = "Test task"
+[tools]
+bun = "latest"
+
+[tasks.geojson]
+description = "Convert OSM export JSON to GeoJSON in data/ directory"
 raw = true
-run = "echo hello"
+run = "./scripts/convert-geojson.sh"
