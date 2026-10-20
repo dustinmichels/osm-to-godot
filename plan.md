@@ -34,6 +34,7 @@ Comprehensive implementation plan for extracting real-world OpenStreetMap (OSM) 
     ```
   - [x] Implement fallback to official OSM 0.6 API (`api.openstreetmap.org/api/0.6/map?bbox=...`) for small high-speed bounding box grabs.
   - [x] Implement client-side export service (`useOverpass.ts`) generating downloadable `osm_export.json` with metadata header containing query timestamp, bbox bounds, and projection centroid.
+
 ---
 
 ## Phase 2: Data Normalization & Coordinate Projection
@@ -61,12 +62,13 @@ Comprehensive implementation plan for extracting real-world OpenStreetMap (OSM) 
     - Remove duplicate adjacent vertices within a tolerance of $<0.05\text{m}$.
     - Verify polygon closure (first point equals last point).
     - Enforce counter-clockwise (CCW) winding for exterior rings.
+
 ---
 
 ## Phase 3: Building Footprint & 3D Extrusion Engine
 
-- [ ] **3.1 Building Height & Floor Level Inference**
-  - [ ] Implement deterministic height resolution ladder:
+- [x] **3.1 Building Height & Floor Level Inference**
+  - [x] Implement deterministic height resolution ladder:
     1. Parse explicit `height` tag (clean units: `"15"`, `"15m"`, `"15.2 m"`).
     2. Else parse `building:levels` tag: $\text{height} = \text{levels} \times 3.3\text{m}$.
     3. Else infer from `building` semantic classification:
@@ -76,20 +78,20 @@ Comprehensive implementation plan for extracting real-world OpenStreetMap (OSM) 
        - `industrial`, `warehouse`: $8.0\text{m}$
        - `garage`, `shed`, `kiosk`: $3.0\text{m}$ (1 floor)
        - Unclassified `yes`: $8.0\text{m}$ fallback.
-  - [ ] Parse `min_height` or `building:min_level` for elevated building bases:
+  - [x] Parse `min_height` or `building:min_level` for elevated building bases:
     - $Y_{\text{base}} = \text{min\_height}$ or $\text{min\_level} \times 3.3\text{m}$.
 
-- [ ] **3.2 Roof Polygon Triangulation (Earcut)**
-  - [ ] Implement/integrate 2D Earcut ear-clipping triangulation algorithm.
-  - [ ] Support complex footprints with holes (multipolygon relations with `outer` and `inner` rings):
+- [x] **3.2 Roof Polygon Triangulation (Earcut)**
+  - [x] Implement/integrate 2D Earcut ear-clipping triangulation algorithm.
+  - [x] Support complex footprints with holes (multipolygon relations with `outer` and `inner` rings):
     - Connect inner hole rings to outer boundary via zero-width bridge collinear seams before ear-clipping.
-  - [ ] Generate roof mesh surface:
+  - [x] Generate roof mesh surface:
     - Vertices at $Y = \text{height}$.
     - Normals facing strictly vertical: $(0, 1, 0)$.
     - Planar world-space UV coordinates $(U = X / 10.0, V = Z / 10.0)$ for seamless roof tiling.
 
-- [ ] **3.3 Wall Extrusion & Normals**
-  - [ ] For each perimeter segment $(P_i, P_{i+1})$ along the footprint:
+- [x] **3.3 Wall Extrusion & Normals**
+  - [x] For each perimeter segment $(P_i, P_{i+1})$ along the footprint:
     - Generate a vertical quad (2 triangles) connecting:
       - $V_0 = (P_i.x, Y_{\text{base}}, P_i.z)$
       - $V_1 = (P_{i+1}.x, Y_{\text{base}}, P_{i+1}.z)$
@@ -98,10 +100,10 @@ Comprehensive implementation plan for extracting real-world OpenStreetMap (OSM) 
     - Compute horizontal outward-facing face normal perpendicular to $(P_{i+1} - P_i)$ in the XZ plane.
     - Calculate UVs: $U = \text{cumulative segment length}$, $V = \text{elevation}$.
 
-- [ ] **3.4 Building Materials & Color Mapping**
-  - [ ] Check tags `building:colour` / `roof:colour` (support CSS color names and `#RRGGBB` hex).
-  - [ ] Check `building:material` (`brick`, `concrete`, `glass`, `plaster`, `wood`).
-  - [ ] Generate distinct materials for roof surfaces vs vertical wall facades.
+- [x] **3.4 Building Materials & Color Mapping**
+  - [x] Check tags `building:colour` / `roof:colour` (support CSS color names and `#RRGGBB` hex).
+  - [x] Check `building:material` (`brick`, `concrete`, `glass`, `plaster`, `wood`).
+  - [x] Generate distinct materials for roof surfaces vs vertical wall facades.
 
 ---
 

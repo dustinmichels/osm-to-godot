@@ -1,0 +1,7 @@
+[gd_resource type="StandardMaterial3D" format=3]
+
+[resource]
+resource_name = "building_roof_default"
+albedo_color = Color(0.290196, 0.270588, 0.25098, 1)
+roughness = 0.9
+cull_mode = 2

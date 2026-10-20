@@ -1,6 +1,14 @@
 [tools]
 bun = "latest"
 
+[tasks.build-web]
+description = "Build web app and bundle assets into Godot addon"
+run = "cd web && bun run build:addon"
+
+[tasks.test]
+description = "Run headless Godot test suite"
+run = "godot --headless --path godot_project -s res://test_phase2.gd && godot --headless --path godot_project -s res://test_http_server.gd"
+
 [tasks.geojson]
 description = "Convert OSM export JSON to GeoJSON in data/ directory"
 raw = true

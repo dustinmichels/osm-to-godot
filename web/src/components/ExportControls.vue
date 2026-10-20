@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useBBox } from '@/composables/useBBox'
 import { useOverpass } from '@/composables/useOverpass'
+import { useGodotBridge } from '@/composables/useGodotBridge'
 
 const { hasBBox, isDangerSize, areaKm2 } = useBBox()
 const {
@@ -13,24 +14,52 @@ const {
   downloadJsonFile
 } = useOverpass()
 
+const {
+  isConnected,
+  isSending,
+  godotPort,
+  lastTransferStats,
+  lastTransferError,
+  sendToGodot,
+  startHeartbeat,
+  stopHeartbeat
+} = useGodotBridge()
+
+onMounted(() => {
+  startHeartbeat()
+})
+
+onUnmounted(() => {
+  stopHeartbeat()
+})
+
 const showConfirmModal = ref(false)
+const pendingAction = ref<'godot' | 'download'>('godot')
 const forceFallback = ref(false)
 
-function onExportClick() {
+function onActionClick(action: 'godot' | 'download') {
   if (!hasBBox.value) return
 
   if (isDangerSize.value) {
+    pendingAction.value = action
     showConfirmModal.value = true
     return
   }
 
-  handleExecute()
+  executeAction(action)
 }
 
-async function handleExecute() {
+async function executeAction(action: 'godot' | 'download') {
   showConfirmModal.value = false
-  const payload = await executeExport({ forceFallback: forceFallback.value })
-  if (payload) {
+  let payload = lastExportPayload.value
+  if (!payload) {
+    payload = await executeExport({ forceFallback: forceFallback.value })
+  }
+  if (!payload) return
+
+  if (action === 'godot') {
+    await sendToGodot(payload)
+  } else {
     downloadJsonFile(payload)
   }
 }
@@ -44,9 +73,13 @@ async function handleExecute() {
           <path d="M4 14v2a2 2 0 002 2h8a2 2 0 002-2v-2M10 3v10M6 9l4 4 4-4" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
         </svg>
       </div>
-      <div>
+      <div class="header-text-block">
         <h3 class="card-title">Godot 3D Export</h3>
         <p class="card-sub">Extract road ribbons & 3D buildings</p>
+      </div>
+      <div class="godot-badge" :class="{ 'is-connected': isConnected }">
+        <span class="badge-dot" />
+        <span>{{ isConnected ? `Godot :${godotPort}` : 'Offline' }}</span>
       </div>
     </div>
 
@@ -58,21 +91,46 @@ async function handleExecute() {
       </label>
     </div>
 
-    <!-- Action Button -->
+    <!-- Action Buttons -->
     <div class="actions-row">
       <button
         type="button"
-        class="primary-export-btn"
-        :class="{ 'is-loading': isLoading }"
-        :disabled="!hasBBox || isLoading"
-        @click="onExportClick"
+        class="primary-godot-btn"
+        :class="{ 'is-loading': isLoading || isSending, 'is-linked': isConnected }"
+        :disabled="!hasBBox || isLoading || isSending"
+        @click="onActionClick('godot')"
       >
-        <span v-if="isLoading" class="btn-spinner" />
+        <span v-if="isLoading || isSending" class="btn-spinner" />
         <svg v-else viewBox="0 0 20 20" fill="currentColor" class="btn-icon">
+          <path d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" />
+        </svg>
+        <span>{{ isSending ? 'Sending to Godot...' : (isLoading ? 'Extracting Data...' : '⚡ Send to Godot') }}</span>
+      </button>
+
+      <button
+        type="button"
+        class="secondary-export-btn"
+        :disabled="!hasBBox || isLoading || isSending"
+        @click="onActionClick('download')"
+      >
+        <svg viewBox="0 0 20 20" fill="currentColor" class="btn-icon-sub">
           <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
         </svg>
-        <span>{{ isLoading ? 'Extracting Data...' : 'Export osm_export.json' }}</span>
+        <span>Download JSON</span>
       </button>
+    </div>
+
+    <!-- Direct Godot Transfer Success Notice -->
+    <div v-if="lastTransferStats" class="transfer-success-box">
+      <div class="transfer-badge">✓ Sent to Godot</div>
+      <div class="transfer-detail">
+        Imported <strong>{{ lastTransferStats.roads }}</strong> roads &amp; <strong>{{ lastTransferStats.buildings }}</strong> buildings into Godot!
+      </div>
+    </div>
+
+    <!-- Direct Godot Transfer Error Notice -->
+    <div v-if="lastTransferError" class="transfer-error-box">
+      <span class="transfer-err-label">Godot note:</span> {{ lastTransferError }}
     </div>
 
     <!-- Status / Error Messages -->
@@ -139,7 +197,7 @@ async function handleExecute() {
           <button type="button" class="btn-cancel" @click="showConfirmModal = false">
             Cancel & Resize
           </button>
-          <button type="button" class="btn-confirm-danger" @click="handleExecute">
+          <button type="button" class="btn-confirm-danger" @click="executeAction(pendingAction)">
             Proceed Anyway
           </button>
         </div>
@@ -165,6 +223,41 @@ async function handleExecute() {
   align-items: center;
   gap: 12px;
   margin-bottom: 12px;
+}
+
+.header-text-block {
+  flex: 1;
+}
+
+.godot-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 9999px;
+  background: rgba(100, 116, 139, 0.2);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+.godot-badge.is-connected {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(34, 197, 94, 0.4);
+  color: #4ade80;
+}
+
+.badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+
+.godot-badge.is-connected .badge-dot {
+  background: #22c55e;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.8);
 }
 
 .header-icon-wrap {
@@ -219,38 +312,116 @@ async function handleExecute() {
 }
 
 .actions-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   margin-bottom: 10px;
 }
 
-.primary-export-btn {
+.primary-godot-btn {
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: #2563eb;
+  background: #0284c7;
   color: #ffffff;
-  border: 1px solid #3b82f6;
+  border: 1px solid #38bdf8;
   border-radius: 8px;
   height: 40px;
   font-size: 13.5px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
-  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+  box-shadow: 0 4px 14px rgba(2, 132, 199, 0.35);
 }
 
-.primary-export-btn:hover:not(:disabled) {
-  background: #1d4ed8;
+.primary-godot-btn.is-linked {
+  background: #16a34a;
+  border-color: #4ade80;
+  box-shadow: 0 4px 14px rgba(22, 163, 74, 0.35);
+}
+
+.primary-godot-btn:hover:not(:disabled) {
+  filter: brightness(1.1);
   transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.45);
 }
 
-.primary-export-btn:disabled {
+.primary-godot-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
+}
+
+.secondary-export-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #cbd5e1;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  height: 32px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.secondary-export-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.secondary-export-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-icon-sub {
+  width: 14px;
+  height: 14px;
+  opacity: 0.8;
+}
+
+.transfer-success-box {
+  margin-top: 4px;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: 6px;
+}
+
+.transfer-badge {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #4ade80;
+  margin-bottom: 2px;
+}
+
+.transfer-detail {
+  font-size: 11px;
+  color: #bbf7d0;
+  line-height: 1.4;
+}
+
+.transfer-error-box {
+  margin-top: 4px;
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 6px;
+  font-size: 11.5px;
+  color: #fca5a5;
+}
+
+.transfer-err-label {
+  font-weight: 600;
 }
 
 .btn-icon {
